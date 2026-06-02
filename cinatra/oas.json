@@ -1,0 +1,3012 @@
+{
+  "agentspec_version": "26.1.0",
+  "component_type": "Flow",
+  "id": "email-outreach-flow",
+  "name": "Email Outreach Agent",
+  "description": "Orchestrates an end-to-end email outreach campaign \u2014 from recipient selection and draft generation through human review to delivery.",
+  "metadata": {
+    "cinatra": {
+      "type": "flow",
+      "packageName": "@cinatra-ai/email-outreach-agent",
+      "packageVersion": "0.1.10",
+      "docsRef": "docs/developer/wayflow-input-message-node-contract.md",
+      "hitlScreens": [
+        "@cinatra-ai/email-outreach-agent:setup-form",
+        "@cinatra-ai/email-outreach-agent:list-picker",
+        "@cinatra-ai/email-recipient-selection-agent:output",
+        "@cinatra-ai/skill-recommender-agent:recommend",
+        "@cinatra-ai/email-drafting-agent:output",
+        "@cinatra-ai/reviewer-agent:output",
+        "@cinatra-ai/email-delivery-agent:output",
+        "@cinatra-ai/email-test-delivery-agent:input",
+        "@cinatra-ai/trigger-agent:configure",
+        "@cinatra-ai/context-selection-agent:context-selector"
+      ],
+      "contextSlots": [
+        {
+          "slotId": "offeringContext",
+          "acceptedArtifactExtensions": [
+            "@cinatra-ai/marketing-icp-artifact",
+            "@cinatra-ai/marketing-strategy-artifact",
+            "@cinatra-ai/product-portfolio-artifact"
+          ],
+          "selectionMode": "interactive",
+          "resolutionMode": "accumulate",
+          "minItems": 0,
+          "maxItems": 5,
+          "readableOnly": true
+        }
+      ]
+    }
+  },
+  "inputs": [
+    {
+      "title": "cinatra_run_id",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "title": "contextParentPackageName",
+      "type": "string",
+      "default": "@cinatra-ai/email-outreach-agent"
+    },
+    {
+      "title": "offeringContextSlotId",
+      "type": "string",
+      "default": "offeringContext"
+    },
+    {
+      "title": "contextProjectId",
+      "type": "string",
+      "default": ""
+    }
+  ],
+  "outputs": [],
+  "start_node": {
+    "$component_ref": "start"
+  },
+  "nodes": [
+    {
+      "$component_ref": "start"
+    },
+    {
+      "$component_ref": "setup_gate"
+    },
+    {
+      "$component_ref": "context_setup"
+    },
+    {
+      "$component_ref": "recipients_flow"
+    },
+    {
+      "$component_ref": "skills_flow"
+    },
+    {
+      "$component_ref": "context_offeringContext"
+    },
+    {
+      "$component_ref": "drafts_flow"
+    },
+    {
+      "$component_ref": "sender_flow"
+    },
+    {
+      "$component_ref": "trigger_flow"
+    },
+    {
+      "$component_ref": "end"
+    }
+  ],
+  "control_flow_connections": [
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "start_to_setup_gate",
+      "from_node": {
+        "$component_ref": "start"
+      },
+      "to_node": {
+        "$component_ref": "setup_gate"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "setup_gate_to_context_setup",
+      "from_node": {
+        "$component_ref": "setup_gate"
+      },
+      "to_node": {
+        "$component_ref": "context_setup"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "context_setup_to_recipients_flow",
+      "from_node": {
+        "$component_ref": "context_setup"
+      },
+      "to_node": {
+        "$component_ref": "recipients_flow"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "recipients_flow_to_skills_flow",
+      "from_node": {
+        "$component_ref": "recipients_flow"
+      },
+      "to_node": {
+        "$component_ref": "skills_flow"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "sender_flow_to_end",
+      "from_node": {
+        "$component_ref": "sender_flow"
+      },
+      "to_node": {
+        "$component_ref": "trigger_flow"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "trigger_flow_to_end",
+      "from_node": {
+        "$component_ref": "trigger_flow"
+      },
+      "to_node": {
+        "$component_ref": "end"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "drafts_flow_to_sender_flow",
+      "from_node": {
+        "$component_ref": "drafts_flow"
+      },
+      "to_node": {
+        "$component_ref": "sender_flow"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "skills_flow_to_drafts_flow",
+      "from_node": {
+        "$component_ref": "skills_flow"
+      },
+      "to_node": {
+        "$component_ref": "context_offeringContext"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "context_offeringContext_to_drafts_flow",
+      "from_node": {
+        "$component_ref": "context_offeringContext"
+      },
+      "to_node": {
+        "$component_ref": "drafts_flow"
+      }
+    }
+  ],
+  "data_flow_connections": [
+    {
+      "component_type": "DataFlowEdge",
+      "name": "setup_gate_to_context_setup_setupJson",
+      "source_node": {
+        "$component_ref": "setup_gate"
+      },
+      "source_output": "setupJson",
+      "destination_node": {
+        "$component_ref": "context_setup"
+      },
+      "destination_input": "setupJson"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_to_context_setup_cinatra_run_id",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "cinatra_run_id",
+      "destination_node": {
+        "$component_ref": "context_setup"
+      },
+      "destination_input": "cinatra_run_id"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_to_recipients_flow_agent_run_id",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "cinatra_run_id",
+      "destination_node": {
+        "$component_ref": "recipients_flow"
+      },
+      "destination_input": "agent_run_id"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_to_drafts_flow_agent_run_id",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "cinatra_run_id",
+      "destination_node": {
+        "$component_ref": "drafts_flow"
+      },
+      "destination_input": "agent_run_id"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_to_sender_flow_agent_run_id",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "cinatra_run_id",
+      "destination_node": {
+        "$component_ref": "sender_flow"
+      },
+      "destination_input": "agent_run_id"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_to_trigger_flow_agent_run_id",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "cinatra_run_id",
+      "destination_node": {
+        "$component_ref": "trigger_flow"
+      },
+      "destination_input": "agent_run_id"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "context_setup_to_drafts_flow_offeringCompanyWebsite",
+      "source_node": {
+        "$component_ref": "context_setup"
+      },
+      "source_output": "offeringCompanyWebsite",
+      "destination_node": {
+        "$component_ref": "drafts_flow"
+      },
+      "destination_input": "offeringCompanyWebsite"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "context_setup_to_drafts_flow_callToAction",
+      "source_node": {
+        "$component_ref": "context_setup"
+      },
+      "source_output": "callToAction",
+      "destination_node": {
+        "$component_ref": "drafts_flow"
+      },
+      "destination_input": "callToAction"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "context_setup_to_drafts_flow_senderName",
+      "source_node": {
+        "$component_ref": "context_setup"
+      },
+      "source_output": "senderName",
+      "destination_node": {
+        "$component_ref": "drafts_flow"
+      },
+      "destination_input": "senderName"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "recipients_flow_to_drafts_flow_confirmedRecipientsRef",
+      "source_node": {
+        "$component_ref": "recipients_flow"
+      },
+      "source_output": "confirmedRecipientsRef",
+      "destination_node": {
+        "$component_ref": "drafts_flow"
+      },
+      "destination_input": "confirmedRecipientsRef"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "recipients_flow_to_sender_flow_confirmedRecipientsRef",
+      "source_node": {
+        "$component_ref": "recipients_flow"
+      },
+      "source_output": "confirmedRecipientsRef",
+      "destination_node": {
+        "$component_ref": "sender_flow"
+      },
+      "destination_input": "confirmedRecipientsRef"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "drafts_flow_to_sender_flow_approvedDraftBundleRef",
+      "source_node": {
+        "$component_ref": "drafts_flow"
+      },
+      "source_output": "draftBundleRef",
+      "destination_node": {
+        "$component_ref": "sender_flow"
+      },
+      "destination_input": "approvedDraftBundleRef"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_to_skills_flow_agent_run_id",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "cinatra_run_id",
+      "destination_node": {
+        "$component_ref": "skills_flow"
+      },
+      "destination_input": "agent_run_id"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_cinatra_run_id_to_context_offeringContext_parentRunId",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "cinatra_run_id",
+      "destination_node": {
+        "$component_ref": "context_offeringContext"
+      },
+      "destination_input": "parentRunId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_contextParentPackageName_to_context_offeringContext_parentPackageName",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "contextParentPackageName",
+      "destination_node": {
+        "$component_ref": "context_offeringContext"
+      },
+      "destination_input": "parentPackageName"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_offeringContextSlotId_to_context_offeringContext_slotId",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "offeringContextSlotId",
+      "destination_node": {
+        "$component_ref": "context_offeringContext"
+      },
+      "destination_input": "slotId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_contextProjectId_to_context_offeringContext_projectId",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "contextProjectId",
+      "destination_node": {
+        "$component_ref": "context_offeringContext"
+      },
+      "destination_input": "projectId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "context_offeringContext_contextSlotBindings_to_drafts_flow",
+      "source_node": {
+        "$component_ref": "context_offeringContext"
+      },
+      "source_output": "contextSlotBindings",
+      "destination_node": {
+        "$component_ref": "drafts_flow"
+      },
+      "destination_input": "contextSlotBindings"
+    }
+  ],
+  "$referenced_components": {
+    "start": {
+      "component_type": "StartNode",
+      "id": "start",
+      "name": "Campaign setup",
+      "metadata": {
+        "cinatra": {
+          "hidden": [
+            "cinatra_run_id",
+            "contextParentPackageName",
+            "offeringContextSlotId",
+            "contextProjectId"
+          ]
+        }
+      },
+      "inputs": [
+        {
+          "title": "cinatra_run_id",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "contextParentPackageName",
+          "type": "string",
+          "default": "@cinatra-ai/email-outreach-agent"
+        },
+        {
+          "title": "offeringContextSlotId",
+          "type": "string",
+          "default": "offeringContext"
+        },
+        {
+          "title": "contextProjectId",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    "setup_gate": {
+      "component_type": "InputMessageNode",
+      "id": "setup_gate",
+      "name": "Campaign setup",
+      "metadata": {
+        "cinatra": {
+          "riskClass": "read_only",
+          "requiresApproval": true,
+          "renderer": "@cinatra-ai/email-outreach-agent:setup-form",
+          "a2uiSurfaceId": "email-outreach:step-0:setup",
+          "autoSkipWhenInputsPresent": false,
+          "inputMessageSchema": {
+            "type": "object",
+            "x-renderer": "@cinatra-ai/email-outreach-agent:setup-form",
+            "properties": {
+              "offeringCompanyWebsite": {
+                "type": "string",
+                "title": "Offering company website",
+                "format": "uri"
+              },
+              "callToAction": {
+                "type": "string",
+                "title": "Call to action",
+                "x-renderer": "@cinatra-ai/email-outreach-agent:cta"
+              },
+              "senderName": {
+                "type": "string",
+                "title": "Sender name"
+              }
+            },
+            "required": [
+              "offeringCompanyWebsite",
+              "callToAction"
+            ]
+          },
+          "description": "Enter your campaign details: target company website, call to action, and sender name."
+        }
+      },
+      "outputs": [
+        {
+          "title": "setupJson",
+          "type": "string"
+        }
+      ]
+    },
+    "context_setup": {
+      "component_type": "ApiNode",
+      "id": "context_setup",
+      "name": "Campaign setup",
+      "url": "{{CINATRA_BASE_URL}}/api/agents/passthrough",
+      "http_method": "POST",
+      "data": {
+        "tool": "objects_save",
+        "input": {
+          "_shape": "email_outreach_context_setup",
+          "setupJson": "{{ setupJson }}",
+          "cinatra_agent_run_id": "{{ cinatra_run_id }}"
+        },
+        "agent_run_id": "{{ cinatra_run_id }}",
+        "result_input_passthrough": true,
+        "result_id_field": "campaignId"
+      },
+      "outputs": [
+        {
+          "title": "offeringCompanyWebsite",
+          "type": "string"
+        },
+        {
+          "title": "callToAction",
+          "type": "string"
+        },
+        {
+          "title": "senderName",
+          "type": "string"
+        }
+      ],
+      "metadata": {
+        "cinatra": {
+          "riskClass": "write",
+          "requiresApproval": false,
+          "packageName": "@cinatra-ai/email-outreach-agent"
+        }
+      },
+      "inputs": [
+        {
+          "title": "cinatra_run_id",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "setupJson",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    "recipients_flow": {
+      "component_type": "FlowNode",
+      "id": "recipients_flow",
+      "name": "Recipients",
+      "subflow": {
+        "$component_ref": "email-recipient-selection-subflow"
+      },
+      "metadata": {
+        "cinatra": {
+          "packageName": "@cinatra-ai/email-recipient-selection-agent",
+          "gateSteps": [
+            {
+              "name": "Account scope",
+              "description": "Select the pool of contacts from which campaign recipients will be sourced.",
+              "renderer": "@cinatra-ai/email-outreach-agent:list-picker",
+              "hitlOwnedBy": "self",
+              "gateCount": 1
+            },
+            {
+              "name": "Review recipients",
+              "description": "Review and approve the generated recipient list before drafts are created.",
+              "renderer": "@cinatra-ai/reviewer-agent:contacts-output",
+              "hitlOwnedBy": "self",
+              "gateCount": 1
+            }
+          ]
+        }
+      }
+    },
+    "drafts_flow": {
+      "component_type": "FlowNode",
+      "id": "drafts_flow",
+      "name": "Initial emails",
+      "subflow": {
+        "$component_ref": "email-drafting-subflow"
+      },
+      "metadata": {
+        "cinatra": {
+          "packageName": "@cinatra-ai/email-drafting-agent",
+          "gateSteps": [
+            {
+              "name": "Review drafts",
+              "description": "Review and approve initial email drafts before they are sent.",
+              "renderer": "@cinatra-ai/reviewer-agent:drafts-output",
+              "hitlOwnedBy": "self",
+              "gateCount": 1
+            }
+          ]
+        }
+      }
+    },
+    "sender_flow": {
+      "component_type": "FlowNode",
+      "id": "sender_flow",
+      "name": "Test & send",
+      "subflow": {
+        "$component_ref": "email-delivery-subflow"
+      },
+      "metadata": {
+        "cinatra": {
+          "packageName": "@cinatra-ai/email-delivery-agent"
+        }
+      }
+    },
+    "trigger_flow": {
+      "component_type": "FlowNode",
+      "id": "trigger_flow",
+      "name": "Schedule trigger",
+      "subflow": {
+        "$component_ref": "trigger-subflow"
+      },
+      "metadata": {
+        "cinatra": {
+          "packageName": "@cinatra-ai/trigger-agent"
+        }
+      }
+    },
+    "trigger-subflow": {
+      "agentspec_version": "26.1.0",
+      "component_type": "Flow",
+      "id": "trigger-subflow",
+      "name": "Trigger Agent",
+      "inputs": [
+        {
+          "title": "agent_run_id",
+          "type": "string",
+          "default": ""
+        }
+      ],
+      "outputs": [
+        {
+          "title": "triggerType",
+          "type": "string"
+        },
+        {
+          "title": "scheduledAt",
+          "type": "string"
+        },
+        {
+          "title": "cronExpression",
+          "type": "string"
+        },
+        {
+          "title": "timezone",
+          "type": "string"
+        },
+        {
+          "title": "enabled",
+          "type": "string"
+        }
+      ],
+      "start_node": {
+        "$component_ref": "trigger-start"
+      },
+      "nodes": [
+        {
+          "$component_ref": "trigger-start"
+        },
+        {
+          "$component_ref": "trigger-configure_gate"
+        },
+        {
+          "$component_ref": "trigger-persist"
+        },
+        {
+          "$component_ref": "trigger-end"
+        }
+      ],
+      "control_flow_connections": [
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "trigger-start_to_configure_gate",
+          "from_node": {
+            "$component_ref": "trigger-start"
+          },
+          "to_node": {
+            "$component_ref": "trigger-configure_gate"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "trigger-persist_to_end",
+          "from_node": {
+            "$component_ref": "trigger-persist"
+          },
+          "to_node": {
+            "$component_ref": "trigger-end"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "configure_to_persist",
+          "from_node": {
+            "$component_ref": "trigger-configure_gate"
+          },
+          "to_node": {
+            "$component_ref": "trigger-persist"
+          }
+        }
+      ],
+      "data_flow_connections": [
+        {
+          "component_type": "DataFlowEdge",
+          "name": "trigger-configure_gate_to_persist_userResponse",
+          "source_node": {
+            "$component_ref": "trigger-configure_gate"
+          },
+          "source_output": "userResponse",
+          "destination_node": {
+            "$component_ref": "trigger-persist"
+          },
+          "destination_input": "userResponse"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "trigger-start_to_persist_agent_run_id",
+          "source_node": {
+            "$component_ref": "trigger-start"
+          },
+          "source_output": "agent_run_id",
+          "destination_node": {
+            "$component_ref": "trigger-persist"
+          },
+          "destination_input": "agent_run_id"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "trigger-persist_to_end_triggerType",
+          "source_node": {
+            "$component_ref": "trigger-persist"
+          },
+          "source_output": "triggerType",
+          "destination_node": {
+            "$component_ref": "trigger-end"
+          },
+          "destination_input": "triggerType"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "trigger-persist_to_end_scheduledAt",
+          "source_node": {
+            "$component_ref": "trigger-persist"
+          },
+          "source_output": "scheduledAt",
+          "destination_node": {
+            "$component_ref": "trigger-end"
+          },
+          "destination_input": "scheduledAt"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "trigger-persist_to_end_cronExpression",
+          "source_node": {
+            "$component_ref": "trigger-persist"
+          },
+          "source_output": "cronExpression",
+          "destination_node": {
+            "$component_ref": "trigger-end"
+          },
+          "destination_input": "cronExpression"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "trigger-persist_to_end_timezone",
+          "source_node": {
+            "$component_ref": "trigger-persist"
+          },
+          "source_output": "timezone",
+          "destination_node": {
+            "$component_ref": "trigger-end"
+          },
+          "destination_input": "timezone"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "trigger-persist_to_end_enabled",
+          "source_node": {
+            "$component_ref": "trigger-persist"
+          },
+          "source_output": "enabled",
+          "destination_node": {
+            "$component_ref": "trigger-end"
+          },
+          "destination_input": "enabled"
+        }
+      ],
+      "$referenced_components": {
+        "trigger-start": {
+          "component_type": "StartNode",
+          "id": "trigger-start",
+          "name": "Inputs",
+          "metadata": {
+            "cinatra": {
+              "required": [],
+              "hidden": [
+                "agent_run_id"
+              ]
+            }
+          },
+          "inputs": [
+            {
+              "title": "agent_run_id",
+              "type": "string",
+              "default": ""
+            }
+          ]
+        },
+        "trigger-configure_gate": {
+          "component_type": "InputMessageNode",
+          "id": "trigger-configure_gate",
+          "name": "Configure trigger",
+          "metadata": {
+            "cinatra": {
+              "riskClass": "read_only",
+              "requiresApproval": true,
+              "renderer": "@cinatra-ai/trigger-agent:configure",
+              "a2uiSurfaceId": "email-outreach:trigger:configure",
+              "autoSkipWhenInputsPresent": false,
+              "inputMessageSchema": {
+                "type": "object",
+                "x-renderer": "@cinatra-ai/trigger-agent:configure",
+                "properties": {
+                  "userResponse": {
+                    "type": "string",
+                    "title": "User response",
+                    "description": "JSON-encoded form values produced by the trigger configure renderer"
+                  }
+                },
+                "required": [
+                  "userResponse"
+                ]
+              },
+              "formSchema": {
+                "type": "object",
+                "x-renderer": "@cinatra-ai/trigger-agent:configure",
+                "properties": {
+                  "triggerType": {
+                    "type": "string",
+                    "title": "Trigger type",
+                    "enum": [
+                      "immediate",
+                      "scheduled",
+                      "recurring"
+                    ]
+                  },
+                  "scheduledAt": {
+                    "type": "string",
+                    "title": "Scheduled at"
+                  },
+                  "cronExpression": {
+                    "type": "string",
+                    "title": "Cron expression"
+                  },
+                  "timezone": {
+                    "type": "string",
+                    "title": "Timezone"
+                  }
+                },
+                "required": [
+                  "triggerType",
+                  "timezone"
+                ]
+              }
+            }
+          },
+          "outputs": [
+            {
+              "title": "userResponse",
+              "type": "string"
+            }
+          ]
+        },
+        "trigger-persist": {
+          "component_type": "ApiNode",
+          "id": "trigger-persist",
+          "name": "Persist trigger",
+          "url": "{{CINATRA_BASE_URL}}/api/llm-bridge",
+          "http_method": "POST",
+          "data": {
+            "system": "You are the trigger persistence agent. CRITICAL: Your first and only action is to parse the userResponse JSON, then call trigger_config_set EXACTLY ONCE \u2014 do NOT return any JSON before trigger_config_set completes. The userResponse input is a JSON object with fields: triggerType (one of \"immediate\", \"scheduled\", \"recurring\"), scheduledAt (optional ISO 8601 instant in UTC), cronExpression (optional 5-field cron string), timezone (IANA timezone identifier). Call trigger_config_set with runId set to the agent_run_id input, plus the parsed triggerType, scheduledAt, cronExpression, timezone, and enabled:true. Omit scheduledAt for immediate/recurring; omit cronExpression for immediate/scheduled. Then return ONLY this JSON: {\"triggerType\":\"...\",\"scheduledAt\":\"... or empty string\",\"cronExpression\":\"... or empty string\",\"timezone\":\"...\",\"enabled\":true}.",
+            "user": "Parse the userResponse JSON, persist the trigger configuration, and return the result as JSON.\nInputs:\n- agent_run_id: {{ agent_run_id }}\n- userResponse: {{ userResponse }}",
+            "agent_id": "trigger",
+            "agent_run_id": "{{ agent_run_id }}"
+          },
+          "inputs": [
+            {
+              "title": "agent_run_id",
+              "type": "string",
+              "default": ""
+            },
+            {
+              "title": "userResponse",
+              "type": "string",
+              "default": ""
+            }
+          ],
+          "outputs": [
+            {
+              "title": "triggerType",
+              "type": "string"
+            },
+            {
+              "title": "scheduledAt",
+              "type": "string"
+            },
+            {
+              "title": "cronExpression",
+              "type": "string"
+            },
+            {
+              "title": "timezone",
+              "type": "string"
+            },
+            {
+              "title": "enabled",
+              "type": "string"
+            }
+          ],
+          "metadata": {
+            "cinatra": {
+              "riskClass": "write",
+              "requiresApproval": true,
+              "approvalPolicy": "always",
+              "packageName": "@cinatra-ai/trigger-agent"
+            }
+          }
+        },
+        "trigger-end": {
+          "component_type": "EndNode",
+          "id": "trigger-end",
+          "name": "End",
+          "outputs": [
+            {
+              "title": "triggerType",
+              "type": "string"
+            },
+            {
+              "title": "scheduledAt",
+              "type": "string"
+            },
+            {
+              "title": "cronExpression",
+              "type": "string"
+            },
+            {
+              "title": "timezone",
+              "type": "string"
+            },
+            {
+              "title": "enabled",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    "end": {
+      "component_type": "EndNode",
+      "id": "end",
+      "name": "End",
+      "outputs": []
+    },
+    "email-recipient-selection-subflow": {
+      "agentspec_version": "26.1.0",
+      "component_type": "Flow",
+      "id": "email-recipient-selection-subflow",
+      "name": "Email Recipient Selection Agent",
+      "inputs": [
+        {
+          "title": "agent_run_id",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "accountScope",
+          "type": "string",
+          "default": ""
+        }
+      ],
+      "outputs": [
+        {
+          "title": "confirmedRecipientsRef",
+          "type": "string",
+          "json_schema": {
+            "format": "uuid"
+          }
+        },
+        {
+          "title": "recipientCount",
+          "type": "integer"
+        }
+      ],
+      "start_node": {
+        "$component_ref": "recipients-start"
+      },
+      "nodes": [
+        {
+          "$component_ref": "recipients-start"
+        },
+        {
+          "$component_ref": "recipients-scope_gate"
+        },
+        {
+          "$component_ref": "recipients-generate"
+        },
+        {
+          "$component_ref": "recipients-review_gate"
+        },
+        {
+          "$component_ref": "recipients-end"
+        }
+      ],
+      "control_flow_connections": [
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "recipients-start_to_recipients-scope_gate",
+          "from_node": {
+            "$component_ref": "recipients-start"
+          },
+          "to_node": {
+            "$component_ref": "recipients-scope_gate"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "recipients-scope_gate_to_recipients-generate",
+          "from_node": {
+            "$component_ref": "recipients-scope_gate"
+          },
+          "to_node": {
+            "$component_ref": "recipients-generate"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "recipients-generate_to_recipients-review_gate",
+          "from_node": {
+            "$component_ref": "recipients-generate"
+          },
+          "to_node": {
+            "$component_ref": "recipients-review_gate"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "recipients-review_gate_to_recipients-end",
+          "from_node": {
+            "$component_ref": "recipients-review_gate"
+          },
+          "to_node": {
+            "$component_ref": "recipients-end"
+          }
+        }
+      ],
+      "data_flow_connections": [
+        {
+          "component_type": "DataFlowEdge",
+          "name": "recipients-start_to_recipients-generate_agent_run_id",
+          "source_node": {
+            "$component_ref": "recipients-start"
+          },
+          "source_output": "agent_run_id",
+          "destination_node": {
+            "$component_ref": "recipients-generate"
+          },
+          "destination_input": "agent_run_id"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "recipients-scope_gate_to_recipients-generate_accountScope",
+          "source_node": {
+            "$component_ref": "recipients-scope_gate"
+          },
+          "source_output": "accountScope",
+          "destination_node": {
+            "$component_ref": "recipients-generate"
+          },
+          "destination_input": "accountScope"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "recipients-generate_to_recipients-end_confirmedRecipientsRef",
+          "source_node": {
+            "$component_ref": "recipients-generate"
+          },
+          "source_output": "confirmedRecipientsRef",
+          "destination_node": {
+            "$component_ref": "recipients-end"
+          },
+          "destination_input": "confirmedRecipientsRef"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "recipients-generate_to_recipients-end_recipientCount",
+          "source_node": {
+            "$component_ref": "recipients-generate"
+          },
+          "source_output": "recipientCount",
+          "destination_node": {
+            "$component_ref": "recipients-end"
+          },
+          "destination_input": "recipientCount"
+        }
+      ],
+      "$referenced_components": {
+        "recipients-start": {
+          "component_type": "StartNode",
+          "id": "recipients-start",
+          "name": "Inputs",
+          "metadata": {
+            "cinatra": {
+              "required": [],
+              "hidden": [
+                "agent_run_id"
+              ]
+            }
+          },
+          "inputs": [
+            {
+              "title": "agent_run_id",
+              "type": "string",
+              "default": ""
+            },
+            {
+              "title": "accountScope",
+              "type": "string",
+              "default": ""
+            }
+          ]
+        },
+        "recipients-scope_gate": {
+          "component_type": "InputMessageNode",
+          "id": "recipients-scope_gate",
+          "name": "Choose contact source",
+          "outputs": [
+            {
+              "title": "accountScope",
+              "type": "string"
+            }
+          ],
+          "metadata": {
+            "cinatra": {
+              "inputRenderers": {
+                "accountScope": "@cinatra-ai/email-outreach-agent:list-picker"
+              },
+              "autoSkipWhenInputsPresent": false
+            }
+          }
+        },
+        "recipients-generate": {
+          "component_type": "ApiNode",
+          "id": "recipients-generate",
+          "name": "Generate recipient list",
+          "url": "{{CINATRA_BASE_URL}}/api/llm-bridge",
+          "http_method": "POST",
+          "data": {
+            "system": "You are a campaign recipient fetch agent. Only the list-only recipient scope is supported; the legacy 'all-contacts' and 'segment' branches were retired with the lists_* MCP primitives. The operator MUST pick a saved CRM list (typically curated by @cinatra-ai/list-curator-agent or imported from a connector).\n\nStep 1: Parse accountScope as JSON. ONLY type='list' is supported. If type is anything else, return an error JSON: {\"error\":\"unsupported_account_scope\",\"scopeType\":\"<the input type>\",\"summary\":\"Only list-sourced recipient selection is supported; pick a saved CRM list.\"}.\n\nStep 2: Call crm_list_get({ id: accountScope.listId }) to retrieve list metadata. If the response is null, return an empty-list envelope. Capture listName = result.name and listObjectType = result.objectType.\n\nStep 3: Call crm_list_members_get({ listId: accountScope.listId }). Capture { contactIds, accountIds }. This flow materializes contact recipients only \u2014 accountIds are ignored. If contactIds.length === 0, return an empty-list envelope. Set sourceListSnapshotAt = current ISO timestamp (the LLM emits this \u2014 server-side truth wins). Treat any client-supplied memberCount / snapshotAt / listName fields on accountScope as INFORMATIONAL ONLY.\n\nStep 4: For each contactId in contactIds, call crm_contact_get({ id: contactId }). Skip null responses (stale list refs). The returned CrmContact does not include the parent account's name \u2014 for each unique CrmContact.accountId, call crm_account_get({ id: accountId }) ONCE and cache account.name. Build the per-row recipient: { contactId: CrmContact.id, name, title: CrmContact.title ?? '', email: CrmContact.email ?? '', accountId: CrmContact.accountId ?? '', accountName: cached account.name ?? '' }. Filter to rows where name !== '' AND accountName !== ''. Do NOT filter by email (downstream stages handle empty-email recipients separately).\n\nStep 5 \u2014 CRITICAL: Call objects_save BEFORE returning any JSON. Use exactly this structure:\n  objects_save({\n    typeHint: \"@cinatra-ai/campaigns:recipients\",\n    rawData: {\n      cinatra_agent_run_id: \"<agent_run_id input>\",\n      confirmedRecipients: [ ...all contacts from Step 4... ],\n      recipientCount: <total number of contacts>,\n      sourceListId: \"<accountScope.listId>\",\n      sourceListName: \"<listName from Step 2>\",\n      sourceListMemberType: \"contact\",\n      sourceListSnapshotAt: \"<sourceListSnapshotAt from Step 3>\"\n    }\n  })\n\nStep 6: Return ONLY this JSON:\n{\"confirmedRecipientsRef\":\"<objectId from objects_save>\",\"recipientCount\":<n>,\"confirmedRecipients\":[...],\"summary\":\"Fetched <n> contacts from list <listName>.\"}.\n\nDo NOT put data inside typeHint. Do NOT return JSON before completing Step 5.",
+            "user": "Execute the recipient fetch task now and return the result as JSON.\nInputs:\n- accountScope: {{ accountScope }}\n- agent_run_id: {{ agent_run_id }}",
+            "agent_id": "email-recipient-selection",
+            "agent_run_id": "{{ agent_run_id }}"
+          },
+          "outputs": [
+            {
+              "title": "confirmedRecipientsRef",
+              "type": "string",
+              "json_schema": {
+                "format": "uuid"
+              }
+            },
+            {
+              "title": "recipientCount",
+              "type": "integer"
+            },
+            {
+              "title": "confirmedRecipients",
+              "type": "array",
+              "json_schema": {
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          ],
+          "metadata": {
+            "cinatra": {
+              "riskClass": "read_only",
+              "requiresApproval": true,
+              "renderer": "@cinatra-ai/email-recipient-selection-agent:output",
+              "a2uiSurfaceId": "email-recipient-selection:step-1:output"
+            }
+          }
+        },
+        "recipients-end": {
+          "component_type": "EndNode",
+          "id": "recipients-end",
+          "name": "End",
+          "outputs": [
+            {
+              "title": "confirmedRecipientsRef",
+              "type": "string",
+              "json_schema": {
+                "format": "uuid"
+              }
+            },
+            {
+              "title": "recipientCount",
+              "type": "integer"
+            }
+          ]
+        },
+        "recipients-review_gate": {
+          "component_type": "InputMessageNode",
+          "id": "recipients-review_gate",
+          "name": "Review recipients",
+          "outputs": [
+            {
+              "title": "userResponse",
+              "type": "string"
+            }
+          ],
+          "metadata": {
+            "cinatra": {
+              "riskClass": "read_only",
+              "requiresApproval": true,
+              "renderer": "@cinatra-ai/email-recipient-selection-agent:output",
+              "a2uiSurfaceId": "email-recipient-selection:step-1:output"
+            }
+          }
+        }
+      }
+    },
+    "email-drafting-subflow": {
+      "agentspec_version": "26.1.0",
+      "component_type": "Flow",
+      "id": "email-drafting-subflow",
+      "name": "Email Drafting Agent",
+      "inputs": [
+        {
+          "title": "agent_run_id",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "offeringCompanyWebsite",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "callToAction",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "senderName",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "confirmedRecipientsRef",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "contextSlotBindings",
+          "type": "array",
+          "default": [],
+          "json_schema": {
+            "items": {
+              "type": "object",
+              "properties": {
+                "artifactId": {
+                  "type": "string"
+                },
+                "representationRevisionId": {
+                  "type": "string"
+                },
+                "semanticAssertionId": {
+                  "type": "string"
+                },
+                "extension": {
+                  "type": "string"
+                },
+                "sourceScope": {
+                  "type": "string"
+                },
+                "ownerId": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "title": "draftBundleRef",
+          "type": "string",
+          "json_schema": {
+            "format": "uuid"
+          }
+        }
+      ],
+      "start_node": {
+        "$component_ref": "drafts-start"
+      },
+      "nodes": [
+        {
+          "$component_ref": "drafts-start"
+        },
+        {
+          "$component_ref": "drafts-draft"
+        },
+        {
+          "$component_ref": "drafts-approval_gate"
+        },
+        {
+          "$component_ref": "drafts-end"
+        },
+        {
+          "$component_ref": "drafts-uuid_match"
+        },
+        {
+          "$component_ref": "drafts-check_inputs_predicate"
+        },
+        {
+          "$component_ref": "drafts-check_inputs"
+        },
+        {
+          "$component_ref": "drafts-data_gate"
+        }
+      ],
+      "control_flow_connections": [
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "drafts-start_to_uuid_match",
+          "from_node": {
+            "$component_ref": "drafts-start"
+          },
+          "to_node": {
+            "$component_ref": "drafts-uuid_match"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "drafts-uuid_match_to_predicate",
+          "from_node": {
+            "$component_ref": "drafts-uuid_match"
+          },
+          "to_node": {
+            "$component_ref": "drafts-check_inputs_predicate"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "drafts-predicate_to_check_inputs",
+          "from_node": {
+            "$component_ref": "drafts-check_inputs_predicate"
+          },
+          "to_node": {
+            "$component_ref": "drafts-check_inputs"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "drafts-check_inputs_skip_to_draft",
+          "from_node": {
+            "$component_ref": "drafts-check_inputs"
+          },
+          "from_branch": "skip",
+          "to_node": {
+            "$component_ref": "drafts-draft"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "drafts-check_inputs_default_to_data_gate",
+          "from_node": {
+            "$component_ref": "drafts-check_inputs"
+          },
+          "from_branch": "default",
+          "to_node": {
+            "$component_ref": "drafts-data_gate"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "drafts-data_gate_to_draft",
+          "from_node": {
+            "$component_ref": "drafts-data_gate"
+          },
+          "to_node": {
+            "$component_ref": "drafts-draft"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "drafts-draft_to_drafts-approval_gate",
+          "from_node": {
+            "$component_ref": "drafts-draft"
+          },
+          "to_node": {
+            "$component_ref": "drafts-approval_gate"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "drafts-approval_gate_to_drafts-end",
+          "from_node": {
+            "$component_ref": "drafts-approval_gate"
+          },
+          "to_node": {
+            "$component_ref": "drafts-end"
+          }
+        }
+      ],
+      "data_flow_connections": [
+        {
+          "component_type": "DataFlowEdge",
+          "name": "drafts-start_to_drafts-draft_agent_run_id",
+          "source_node": {
+            "$component_ref": "drafts-start"
+          },
+          "source_output": "agent_run_id",
+          "destination_node": {
+            "$component_ref": "drafts-draft"
+          },
+          "destination_input": "agent_run_id"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "drafts-start_to_drafts-draft_offeringCompanyWebsite",
+          "source_node": {
+            "$component_ref": "drafts-start"
+          },
+          "source_output": "offeringCompanyWebsite",
+          "destination_node": {
+            "$component_ref": "drafts-draft"
+          },
+          "destination_input": "offeringCompanyWebsite"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "drafts-start_to_drafts-draft_callToAction",
+          "source_node": {
+            "$component_ref": "drafts-start"
+          },
+          "source_output": "callToAction",
+          "destination_node": {
+            "$component_ref": "drafts-draft"
+          },
+          "destination_input": "callToAction"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "drafts-start_to_drafts-draft_senderName",
+          "source_node": {
+            "$component_ref": "drafts-start"
+          },
+          "source_output": "senderName",
+          "destination_node": {
+            "$component_ref": "drafts-draft"
+          },
+          "destination_input": "senderName"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "drafts-start_to_drafts-draft_confirmedRecipientsRef",
+          "source_node": {
+            "$component_ref": "drafts-start"
+          },
+          "source_output": "confirmedRecipientsRef",
+          "destination_node": {
+            "$component_ref": "drafts-draft"
+          },
+          "destination_input": "confirmedRecipientsRef"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "drafts-draft_to_drafts-end_draftBundleRef",
+          "source_node": {
+            "$component_ref": "drafts-draft"
+          },
+          "source_output": "draftBundleRef",
+          "destination_node": {
+            "$component_ref": "drafts-end"
+          },
+          "destination_input": "draftBundleRef"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "drafts-start_to_uuid_match_text",
+          "source_node": {
+            "$component_ref": "drafts-start"
+          },
+          "source_output": "confirmedRecipientsRef",
+          "destination_node": {
+            "$component_ref": "drafts-uuid_match"
+          },
+          "destination_input": "text"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "drafts-uuid_match_to_predicate_matches",
+          "source_node": {
+            "$component_ref": "drafts-uuid_match"
+          },
+          "source_output": "output",
+          "destination_node": {
+            "$component_ref": "drafts-check_inputs_predicate"
+          },
+          "destination_input": "matches"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "drafts-predicate_to_check_inputs_verdict",
+          "source_node": {
+            "$component_ref": "drafts-check_inputs_predicate"
+          },
+          "source_output": "output",
+          "destination_node": {
+            "$component_ref": "drafts-check_inputs"
+          },
+          "destination_input": "verdict"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "drafts-data_gate_to_draft_confirmedRecipientsRef",
+          "source_node": {
+            "$component_ref": "drafts-data_gate"
+          },
+          "source_output": "confirmedRecipientsRef",
+          "destination_node": {
+            "$component_ref": "drafts-draft"
+          },
+          "destination_input": "confirmedRecipientsRef"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "drafts-start_to_drafts-draft_contextSlotBindings",
+          "source_node": {
+            "$component_ref": "drafts-start"
+          },
+          "source_output": "contextSlotBindings",
+          "destination_node": {
+            "$component_ref": "drafts-draft"
+          },
+          "destination_input": "contextSlotBindings"
+        }
+      ],
+      "$referenced_components": {
+        "drafts-start": {
+          "component_type": "StartNode",
+          "id": "drafts-start",
+          "name": "Inputs",
+          "metadata": {
+            "cinatra": {
+              "required": [],
+              "hidden": [
+                "agent_run_id",
+                "offeringCompanyWebsite",
+                "callToAction",
+                "senderName",
+                "confirmedRecipientsRef",
+                "contextSlotBindings"
+              ]
+            }
+          },
+          "inputs": [
+            {
+              "title": "agent_run_id",
+              "type": "string",
+              "default": ""
+            },
+            {
+              "title": "offeringCompanyWebsite",
+              "type": "string",
+              "default": ""
+            },
+            {
+              "title": "callToAction",
+              "type": "string",
+              "default": ""
+            },
+            {
+              "title": "senderName",
+              "type": "string",
+              "default": ""
+            },
+            {
+              "title": "confirmedRecipientsRef",
+              "type": "string",
+              "default": ""
+            },
+            {
+              "title": "contextSlotBindings",
+              "type": "array",
+              "default": [],
+              "json_schema": {
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "artifactId": {
+                      "type": "string"
+                    },
+                    "representationRevisionId": {
+                      "type": "string"
+                    },
+                    "semanticAssertionId": {
+                      "type": "string"
+                    },
+                    "extension": {
+                      "type": "string"
+                    },
+                    "sourceScope": {
+                      "type": "string"
+                    },
+                    "ownerId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "drafts-draft": {
+          "component_type": "ApiNode",
+          "id": "drafts-draft",
+          "name": "Draft emails",
+          "url": "{{CINATRA_BASE_URL}}/api/llm-bridge",
+          "http_method": "POST",
+          "data": {
+            "system": "You are an email drafting agent.\n\nStep 1: Call objects_get with confirmedRecipientsRef to fetch the recipients list.\n\nStep 2: Generate exactly one personalized initial outreach email per recipient using offeringCompanyWebsite, callToAction, and senderName as context.\n\nStep 3 \u2014 CRITICAL: Call objects_save BEFORE returning any JSON. Use exactly this structure:\n  objects_save({\n    typeHint: \"@cinatra-ai/campaigns:email-draft-bundle\",\n    rawData: {\n      cinatra_agent_run_id: \"<agent_run_id input>\",\n      drafts: [\n        { recipientEmail: \"...\", subject: \"...\", body: \"...\", status: \"draft\" }\n      ]\n    }\n  })\n\nStep 4: Return ONLY this JSON using the object ID returned by objects_save: {\"draftBundleRef\":\"<objectId returned by objects_save>\",\"summary\":\"<one sentence summary>\"}.\n\nDo NOT return draftBundleRef without completing Step 3. Never skip objects_save. Do not send emails \u2014 this agent only drafts.",
+            "user": "Execute the email drafting task now and return the result as JSON.\nInputs:\n- offeringCompanyWebsite: {{ offeringCompanyWebsite }}\n- callToAction: {{ callToAction }}\n- senderName: {{ senderName }}\n- confirmedRecipientsRef: {{ confirmedRecipientsRef }}\n- contextSlotBindings: {{ contextSlotBindings }}",
+            "agent_id": "email-drafting",
+            "agent_run_id": "{{ agent_run_id }}"
+          },
+          "outputs": [
+            {
+              "title": "draftBundleRef",
+              "type": "string",
+              "json_schema": {
+                "format": "uuid"
+              }
+            }
+          ],
+          "metadata": {
+            "cinatra": {
+              "riskClass": "draft_create",
+              "requiresApproval": true,
+              "renderer": "@cinatra-ai/email-drafting-agent:output",
+              "a2uiSurfaceId": "email-drafting:step-1:output"
+            }
+          }
+        },
+        "drafts-end": {
+          "component_type": "EndNode",
+          "id": "drafts-end",
+          "name": "End",
+          "outputs": [
+            {
+              "title": "draftBundleRef",
+              "type": "string",
+              "json_schema": {
+                "format": "uuid"
+              }
+            }
+          ]
+        },
+        "drafts-approval_gate": {
+          "component_type": "InputMessageNode",
+          "id": "drafts-approval_gate",
+          "name": "Approval gate",
+          "metadata": {
+            "cinatra": {
+              "riskClass": "approval",
+              "requiresApproval": true,
+              "renderer": "@cinatra-ai/email-drafting-agent:output",
+              "a2uiSurfaceId": "email-drafting:approval-gate:input",
+              "autoSkipWhenInputsPresent": false
+            }
+          },
+          "outputs": [
+            {
+              "title": "userResponse",
+              "type": "string"
+            }
+          ]
+        },
+        "drafts-uuid_match": {
+          "component_type": "PluginRegexNode",
+          "id": "drafts-uuid_match",
+          "name": "drafts-uuid_match",
+          "metadata": {},
+          "inputs": [
+            {
+              "title": "text",
+              "type": "string"
+            }
+          ],
+          "outputs": [
+            {
+              "title": "output",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "branches": [
+            "next"
+          ],
+          "input_mapping": {},
+          "output_mapping": {},
+          "regex_pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+          "return_first_match_only": false,
+          "component_plugin_name": "NodesPlugin",
+          "component_plugin_version": "26.1.0"
+        },
+        "drafts-check_inputs_predicate": {
+          "component_type": "PluginTemplateNode",
+          "id": "drafts-check_inputs_predicate",
+          "name": "drafts-check_inputs_predicate",
+          "metadata": {},
+          "inputs": [
+            {
+              "title": "matches"
+            }
+          ],
+          "outputs": [
+            {
+              "title": "output",
+              "type": "string"
+            }
+          ],
+          "branches": [
+            "next"
+          ],
+          "input_mapping": {},
+          "output_mapping": {},
+          "template": "{% if matches and (matches|length > 0) %}present{% else %}missing{% endif %}",
+          "component_plugin_name": "NodesPlugin",
+          "component_plugin_version": "26.1.0"
+        },
+        "drafts-check_inputs": {
+          "component_type": "BranchingNode",
+          "id": "drafts-check_inputs",
+          "name": "drafts-check_inputs",
+          "metadata": {
+            "cinatra": {
+              "purpose": "skip-data_gate-when-confirmedRecipientsRef-is-valid-uuid"
+            }
+          },
+          "inputs": [
+            {
+              "title": "verdict",
+              "type": "string"
+            }
+          ],
+          "outputs": [],
+          "branches": [
+            "default",
+            "skip"
+          ],
+          "mapping": {
+            "present": "skip"
+          }
+        },
+        "drafts-data_gate": {
+          "component_type": "InputMessageNode",
+          "id": "drafts-data_gate",
+          "name": "Provide draft inputs",
+          "metadata": {
+            "cinatra": {
+              "autoSkipWhenInputsPresent": true,
+              "riskClass": "read_only",
+              "renderer": "@cinatra-ai/email-drafting-agent:input",
+              "a2uiSurfaceId": "email-drafting:data-gate:input"
+            }
+          },
+          "outputs": [
+            {
+              "title": "confirmedRecipientsRef",
+              "type": "string",
+              "json_schema": {
+                "format": "uuid"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "email-delivery-subflow": {
+      "agentspec_version": "26.1.0",
+      "component_type": "Flow",
+      "id": "email-delivery-subflow",
+      "name": "Email Delivery Agent",
+      "inputs": [
+        {
+          "title": "agent_run_id",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "confirmedRecipientsRef",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "senderEmail",
+          "type": "string",
+          "default": "",
+          "description": "Sender email address",
+          "json_schema": {
+            "format": "email"
+          }
+        },
+        {
+          "title": "approvedDraftBundleRef",
+          "type": "string",
+          "default": "",
+          "description": "Approved draft bundle reference (UUID)",
+          "json_schema": {
+            "format": "uuid"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "title": "sendResult",
+          "type": "object"
+        },
+        {
+          "title": "userResponse",
+          "type": "string"
+        }
+      ],
+      "start_node": {
+        "$component_ref": "sender-start"
+      },
+      "nodes": [
+        {
+          "$component_ref": "sender-start"
+        },
+        {
+          "$component_ref": "sender-send"
+        },
+        {
+          "$component_ref": "sender-approval_gate"
+        },
+        {
+          "$component_ref": "sender-end"
+        }
+      ],
+      "control_flow_connections": [
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "sender-start_to_sender-send",
+          "from_node": {
+            "$component_ref": "sender-start"
+          },
+          "to_node": {
+            "$component_ref": "sender-send"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "sender-send_to_sender-approval_gate",
+          "from_node": {
+            "$component_ref": "sender-send"
+          },
+          "to_node": {
+            "$component_ref": "sender-approval_gate"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "sender-approval_gate_to_sender-end",
+          "from_node": {
+            "$component_ref": "sender-approval_gate"
+          },
+          "to_node": {
+            "$component_ref": "sender-end"
+          }
+        }
+      ],
+      "data_flow_connections": [
+        {
+          "component_type": "DataFlowEdge",
+          "name": "sender-start_to_sender-send_agent_run_id",
+          "source_node": {
+            "$component_ref": "sender-start"
+          },
+          "source_output": "agent_run_id",
+          "destination_node": {
+            "$component_ref": "sender-send"
+          },
+          "destination_input": "agent_run_id"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "sender-start_to_sender-send_confirmedRecipientsRef",
+          "source_node": {
+            "$component_ref": "sender-start"
+          },
+          "source_output": "confirmedRecipientsRef",
+          "destination_node": {
+            "$component_ref": "sender-send"
+          },
+          "destination_input": "confirmedRecipientsRef"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "sender-start_to_sender-send_senderEmail",
+          "source_node": {
+            "$component_ref": "sender-start"
+          },
+          "source_output": "senderEmail",
+          "destination_node": {
+            "$component_ref": "sender-send"
+          },
+          "destination_input": "senderEmail"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "sender-start_to_sender-send_approvedDraftBundleRef",
+          "source_node": {
+            "$component_ref": "sender-start"
+          },
+          "source_output": "approvedDraftBundleRef",
+          "destination_node": {
+            "$component_ref": "sender-send"
+          },
+          "destination_input": "approvedDraftBundleRef"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "sender-send_to_sender-end_sendResult",
+          "source_node": {
+            "$component_ref": "sender-send"
+          },
+          "source_output": "sendResult",
+          "destination_node": {
+            "$component_ref": "sender-end"
+          },
+          "destination_input": "sendResult"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "sender-approval_gate_to_sender-end_userResponse",
+          "source_node": {
+            "$component_ref": "sender-approval_gate"
+          },
+          "source_output": "userResponse",
+          "destination_node": {
+            "$component_ref": "sender-end"
+          },
+          "destination_input": "userResponse"
+        }
+      ],
+      "$referenced_components": {
+        "sender-start": {
+          "component_type": "StartNode",
+          "id": "sender-start",
+          "name": "Inputs",
+          "metadata": {
+            "cinatra": {
+              "required": [],
+              "hidden": [
+                "agent_run_id",
+                "confirmedRecipientsRef",
+                "approvedDraftBundleRef"
+              ],
+              "inputRenderers": {
+                "senderEmail": "@cinatra-ai/email-outreach-agent:gmail-sender"
+              }
+            }
+          },
+          "inputs": [
+            {
+              "title": "agent_run_id",
+              "type": "string",
+              "default": ""
+            },
+            {
+              "title": "confirmedRecipientsRef",
+              "type": "string",
+              "default": ""
+            },
+            {
+              "title": "senderEmail",
+              "type": "string",
+              "description": "Sender email address",
+              "json_schema": {
+                "format": "email"
+              },
+              "default": ""
+            },
+            {
+              "title": "approvedDraftBundleRef",
+              "type": "string",
+              "default": "",
+              "description": "Approved draft bundle reference (UUID)",
+              "json_schema": {
+                "format": "uuid"
+              }
+            }
+          ]
+        },
+        "sender-send": {
+          "component_type": "ApiNode",
+          "id": "sender-send",
+          "name": "Send campaign emails",
+          "url": "{{CINATRA_BASE_URL}}/api/llm-bridge",
+          "http_method": "POST",
+          "data": {
+            "system": "You are an email campaign sender agent. Fetch the confirmed recipients via objects_get(confirmedRecipientsRef) and the approved draft bundle via objects_get(approvedDraftBundleRef). You safely launch an approved outreach campaign and enforce an explicit human approval boundary before any real send. Return a structured result covering approval status, send status, and any operational issues. If objects_get returns null or wrong typeHint for any ref, set sendResult to an error object and do NOT send any email.",
+            "user": "Execute the email sending task now and return the result as JSON.\nInputs:\n- confirmedRecipientsRef: {{ confirmedRecipientsRef }}\n- approvedDraftBundleRef: {{ approvedDraftBundleRef }}\n- senderEmail: {{ senderEmail }}",
+            "agent_id": "email-delivery",
+            "agent_run_id": "{{ agent_run_id }}"
+          },
+          "inputs": [
+            {
+              "title": "agent_run_id",
+              "type": "string",
+              "default": ""
+            },
+            {
+              "title": "confirmedRecipientsRef",
+              "type": "string",
+              "default": ""
+            },
+            {
+              "title": "senderEmail",
+              "type": "string",
+              "default": ""
+            },
+            {
+              "title": "approvedDraftBundleRef",
+              "type": "string",
+              "default": "",
+              "json_schema": {
+                "format": "uuid"
+              }
+            }
+          ],
+          "outputs": [
+            {
+              "title": "sendResult",
+              "type": "object"
+            }
+          ],
+          "metadata": {
+            "cinatra": {
+              "riskClass": "email_send",
+              "requiresApproval": true,
+              "renderer": "@cinatra-ai/email-delivery-agent:output",
+              "a2uiSurfaceId": "email-delivery:step-1:output"
+            }
+          }
+        },
+        "sender-end": {
+          "component_type": "EndNode",
+          "id": "sender-end",
+          "name": "End",
+          "outputs": [
+            {
+              "title": "sendResult",
+              "type": "object"
+            },
+            {
+              "title": "userResponse",
+              "type": "string"
+            }
+          ]
+        },
+        "sender-approval_gate": {
+          "component_type": "InputMessageNode",
+          "id": "sender-approval_gate",
+          "name": "Approval gate",
+          "metadata": {
+            "cinatra": {
+              "riskClass": "approval",
+              "requiresApproval": true,
+              "renderer": "@cinatra-ai/email-delivery-agent:output",
+              "a2uiSurfaceId": "email-delivery:approval-gate:input",
+              "autoSkipWhenInputsPresent": false
+            }
+          },
+          "outputs": [
+            {
+              "title": "userResponse",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    "skills_flow": {
+      "component_type": "FlowNode",
+      "id": "skills_flow",
+      "name": "Skill review",
+      "subflow": {
+        "$component_ref": "skill-recommender-subflow"
+      },
+      "metadata": {
+        "cinatra": {
+          "packageName": "@cinatra-ai/skill-recommender-agent"
+        }
+      }
+    },
+    "skill-recommender-subflow": {
+      "agentspec_version": "26.1.0",
+      "component_type": "Flow",
+      "id": "skill-recommender-subflow",
+      "name": "Skill Recommender Agent",
+      "inputs": [
+        {
+          "title": "agent_run_id",
+          "type": "string",
+          "default": ""
+        }
+      ],
+      "outputs": [
+        {
+          "title": "confirmed",
+          "type": "string"
+        }
+      ],
+      "start_node": {
+        "$component_ref": "skills-start"
+      },
+      "nodes": [
+        {
+          "$component_ref": "skills-start"
+        },
+        {
+          "$component_ref": "skills-recommend_gate"
+        },
+        {
+          "$component_ref": "skills-end"
+        }
+      ],
+      "control_flow_connections": [
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "skills-start_to_recommend_gate",
+          "from_node": {
+            "$component_ref": "skills-start"
+          },
+          "to_node": {
+            "$component_ref": "skills-recommend_gate"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "skills-recommend_gate_to_end",
+          "from_node": {
+            "$component_ref": "skills-recommend_gate"
+          },
+          "to_node": {
+            "$component_ref": "skills-end"
+          }
+        }
+      ],
+      "data_flow_connections": [
+        {
+          "component_type": "DataFlowEdge",
+          "name": "skills-recommend_gate_to_end_confirmed",
+          "source_node": {
+            "$component_ref": "skills-recommend_gate"
+          },
+          "source_output": "confirmed",
+          "destination_node": {
+            "$component_ref": "skills-end"
+          },
+          "destination_input": "confirmed"
+        }
+      ],
+      "$referenced_components": {
+        "skills-start": {
+          "component_type": "StartNode",
+          "id": "skills-start",
+          "name": "Inputs",
+          "metadata": {
+            "cinatra": {
+              "required": [],
+              "hidden": [
+                "agent_run_id"
+              ]
+            }
+          },
+          "inputs": [
+            {
+              "title": "agent_run_id",
+              "type": "string",
+              "default": ""
+            }
+          ]
+        },
+        "skills-recommend_gate": {
+          "component_type": "InputMessageNode",
+          "id": "skills-recommend_gate",
+          "name": "Review skills",
+          "metadata": {
+            "cinatra": {
+              "riskClass": "read_only",
+              "requiresApproval": true,
+              "renderer": "@cinatra-ai/skill-recommender-agent:recommend",
+              "a2uiSurfaceId": "email-outreach:skills:recommend",
+              "autoSkipWhenInputsPresent": false,
+              "description": "Review the skills that will guide the email drafting step.",
+              "inputMessageSchema": {
+                "type": "object",
+                "x-renderer": "@cinatra-ai/skill-recommender-agent:recommend",
+                "properties": {
+                  "confirmed": {
+                    "type": "boolean",
+                    "title": "Confirmed"
+                  }
+                },
+                "required": [
+                  "confirmed"
+                ]
+              }
+            }
+          },
+          "outputs": [
+            {
+              "title": "confirmed",
+              "type": "string"
+            }
+          ]
+        },
+        "skills-end": {
+          "component_type": "EndNode",
+          "id": "skills-end",
+          "name": "End",
+          "outputs": [
+            {
+              "title": "confirmed",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    "context-offeringContext-subflow": {
+      "agentspec_version": "26.1.0",
+      "component_type": "Flow",
+      "id": "context-offeringContext-subflow",
+      "name": "Context Agent (offeringContext)",
+      "inputs": [
+        {
+          "title": "parentRunId",
+          "type": "string"
+        },
+        {
+          "title": "parentPackageName",
+          "type": "string"
+        },
+        {
+          "title": "slotId",
+          "type": "string"
+        },
+        {
+          "title": "projectId",
+          "type": "string",
+          "default": ""
+        }
+      ],
+      "outputs": [
+        {
+          "title": "contextSlotBindings",
+          "type": "array",
+          "json_schema": {
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      ],
+      "start_node": {
+        "$component_ref": "ctx-offeringContext-start"
+      },
+      "nodes": [
+        {
+          "$component_ref": "ctx-offeringContext-start"
+        },
+        {
+          "$component_ref": "ctx-offeringContext-resolve_context"
+        },
+        {
+          "$component_ref": "ctx-offeringContext-select_mode"
+        },
+        {
+          "$component_ref": "ctx-offeringContext-emit_context_payload"
+        },
+        {
+          "$component_ref": "ctx-offeringContext-context_select_gate"
+        },
+        {
+          "$component_ref": "ctx-offeringContext-finalize_interactive"
+        },
+        {
+          "$component_ref": "ctx-offeringContext-finalize_autonomous"
+        },
+        {
+          "$component_ref": "ctx-offeringContext-end"
+        }
+      ],
+      "control_flow_connections": [
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "ctx-offeringContext-start_to_resolve",
+          "from_node": {
+            "$component_ref": "ctx-offeringContext-start"
+          },
+          "to_node": {
+            "$component_ref": "ctx-offeringContext-resolve_context"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "ctx-offeringContext-resolve_to_select",
+          "from_node": {
+            "$component_ref": "ctx-offeringContext-resolve_context"
+          },
+          "to_node": {
+            "$component_ref": "ctx-offeringContext-select_mode"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "ctx-offeringContext-select_default_to_emit",
+          "from_node": {
+            "$component_ref": "ctx-offeringContext-select_mode"
+          },
+          "to_node": {
+            "$component_ref": "ctx-offeringContext-emit_context_payload"
+          },
+          "from_branch": "default"
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "ctx-offeringContext-emit_to_gate",
+          "from_node": {
+            "$component_ref": "ctx-offeringContext-emit_context_payload"
+          },
+          "to_node": {
+            "$component_ref": "ctx-offeringContext-context_select_gate"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "ctx-offeringContext-gate_to_finalize_interactive",
+          "from_node": {
+            "$component_ref": "ctx-offeringContext-context_select_gate"
+          },
+          "to_node": {
+            "$component_ref": "ctx-offeringContext-finalize_interactive"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "ctx-offeringContext-finalize_interactive_to_end",
+          "from_node": {
+            "$component_ref": "ctx-offeringContext-finalize_interactive"
+          },
+          "to_node": {
+            "$component_ref": "ctx-offeringContext-end"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "ctx-offeringContext-select_autonomous_to_finalize",
+          "from_node": {
+            "$component_ref": "ctx-offeringContext-select_mode"
+          },
+          "to_node": {
+            "$component_ref": "ctx-offeringContext-finalize_autonomous"
+          },
+          "from_branch": "autonomous"
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "ctx-offeringContext-finalize_autonomous_to_end",
+          "from_node": {
+            "$component_ref": "ctx-offeringContext-finalize_autonomous"
+          },
+          "to_node": {
+            "$component_ref": "ctx-offeringContext-end"
+          }
+        }
+      ],
+      "data_flow_connections": [
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-start_parentRunId_to_resolve",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-start"
+          },
+          "source_output": "parentRunId",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-resolve_context"
+          },
+          "destination_input": "parentRunId"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-start_parentPackageName_to_resolve",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-start"
+          },
+          "source_output": "parentPackageName",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-resolve_context"
+          },
+          "destination_input": "parentPackageName"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-start_slotId_to_resolve",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-start"
+          },
+          "source_output": "slotId",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-resolve_context"
+          },
+          "destination_input": "slotId"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-start_projectId_to_resolve",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-start"
+          },
+          "source_output": "projectId",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-resolve_context"
+          },
+          "destination_input": "projectId"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-resolve_selectionMode_to_select",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-resolve_context"
+          },
+          "source_output": "selectionMode",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-select_mode"
+          },
+          "destination_input": "selectionMode"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-resolve_candidates_to_emit",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-resolve_context"
+          },
+          "source_output": "candidates",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-emit_context_payload"
+          },
+          "destination_input": "candidates"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-resolve_slotMeta_to_emit",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-resolve_context"
+          },
+          "source_output": "slotMeta",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-emit_context_payload"
+          },
+          "destination_input": "slotMeta"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-resolve_selectedRefs_to_emit",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-resolve_context"
+          },
+          "source_output": "selectedRefs",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-emit_context_payload"
+          },
+          "destination_input": "selectedRefs"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-gate_userResponse_to_finalize_interactive",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-context_select_gate"
+          },
+          "source_output": "userResponse",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-finalize_interactive"
+          },
+          "destination_input": "userResponse"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-start_parentRunId_to_finalize_interactive",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-start"
+          },
+          "source_output": "parentRunId",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-finalize_interactive"
+          },
+          "destination_input": "parentRunId"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-start_parentPackageName_to_finalize_interactive",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-start"
+          },
+          "source_output": "parentPackageName",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-finalize_interactive"
+          },
+          "destination_input": "parentPackageName"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-start_slotId_to_finalize_interactive",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-start"
+          },
+          "source_output": "slotId",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-finalize_interactive"
+          },
+          "destination_input": "slotId"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-start_projectId_to_finalize_interactive",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-start"
+          },
+          "source_output": "projectId",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-finalize_interactive"
+          },
+          "destination_input": "projectId"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-resolve_selectionMode_to_finalize_interactive",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-resolve_context"
+          },
+          "source_output": "selectionMode",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-finalize_interactive"
+          },
+          "destination_input": "selectionMode"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-start_parentRunId_to_finalize_autonomous",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-start"
+          },
+          "source_output": "parentRunId",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-finalize_autonomous"
+          },
+          "destination_input": "parentRunId"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-start_parentPackageName_to_finalize_autonomous",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-start"
+          },
+          "source_output": "parentPackageName",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-finalize_autonomous"
+          },
+          "destination_input": "parentPackageName"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-start_slotId_to_finalize_autonomous",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-start"
+          },
+          "source_output": "slotId",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-finalize_autonomous"
+          },
+          "destination_input": "slotId"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-start_projectId_to_finalize_autonomous",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-start"
+          },
+          "source_output": "projectId",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-finalize_autonomous"
+          },
+          "destination_input": "projectId"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-resolve_selectionMode_to_finalize_autonomous",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-resolve_context"
+          },
+          "source_output": "selectionMode",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-finalize_autonomous"
+          },
+          "destination_input": "selectionMode"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-resolve_resolutionMode_to_finalize_autonomous",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-resolve_context"
+          },
+          "source_output": "resolutionMode",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-finalize_autonomous"
+          },
+          "destination_input": "resolutionMode"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-resolve_selectedRefs_to_finalize_autonomous",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-resolve_context"
+          },
+          "source_output": "selectedRefs",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-finalize_autonomous"
+          },
+          "destination_input": "selectedRefs"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-finalize_interactive_to_end",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-finalize_interactive"
+          },
+          "source_output": "contextSlotBindings",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-end"
+          },
+          "destination_input": "contextSlotBindings"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "ctx-offeringContext-finalize_autonomous_to_end",
+          "source_node": {
+            "$component_ref": "ctx-offeringContext-finalize_autonomous"
+          },
+          "source_output": "contextSlotBindings",
+          "destination_node": {
+            "$component_ref": "ctx-offeringContext-end"
+          },
+          "destination_input": "contextSlotBindings"
+        }
+      ],
+      "$referenced_components": {
+        "ctx-offeringContext-start": {
+          "component_type": "StartNode",
+          "id": "ctx-offeringContext-start",
+          "name": "Inputs",
+          "metadata": {
+            "cinatra": {
+              "required": [
+                "parentRunId",
+                "parentPackageName",
+                "slotId"
+              ],
+              "hidden": [
+                "parentRunId",
+                "parentPackageName",
+                "slotId",
+                "projectId"
+              ]
+            }
+          },
+          "inputs": [
+            {
+              "title": "parentRunId",
+              "type": "string"
+            },
+            {
+              "title": "parentPackageName",
+              "type": "string"
+            },
+            {
+              "title": "slotId",
+              "type": "string"
+            },
+            {
+              "title": "projectId",
+              "type": "string",
+              "default": ""
+            }
+          ]
+        },
+        "ctx-offeringContext-resolve_context": {
+          "component_type": "ApiNode",
+          "id": "ctx-offeringContext-resolve_context",
+          "name": "Resolve context candidates",
+          "url": "{{CINATRA_BASE_URL}}/api/context-resolve",
+          "http_method": "POST",
+          "data": {
+            "parentRunId": "{{ parentRunId }}",
+            "parentPackageName": "{{ parentPackageName }}",
+            "slotId": "{{ slotId }}",
+            "projectId": "{{ projectId }}"
+          },
+          "inputs": [
+            {
+              "title": "parentRunId",
+              "type": "string"
+            },
+            {
+              "title": "parentPackageName",
+              "type": "string"
+            },
+            {
+              "title": "slotId",
+              "type": "string"
+            },
+            {
+              "title": "projectId",
+              "type": "string",
+              "default": ""
+            }
+          ],
+          "outputs": [
+            {
+              "title": "candidates",
+              "type": "array",
+              "json_schema": {
+                "items": {
+                  "type": "object"
+                }
+              }
+            },
+            {
+              "title": "slotMeta",
+              "type": "object"
+            },
+            {
+              "title": "selectedRefs",
+              "type": "array",
+              "json_schema": {
+                "items": {
+                  "type": "object"
+                }
+              }
+            },
+            {
+              "title": "selectionMode",
+              "type": "string"
+            },
+            {
+              "title": "resolutionMode",
+              "type": "string"
+            }
+          ]
+        },
+        "ctx-offeringContext-select_mode": {
+          "component_type": "BranchingNode",
+          "id": "ctx-offeringContext-select_mode",
+          "name": "Branch on selection mode",
+          "metadata": {
+            "cinatra": {
+              "purpose": "route-autonomous-slots-around-the-HITL-gate"
+            }
+          },
+          "inputs": [
+            {
+              "title": "selectionMode",
+              "type": "string"
+            }
+          ],
+          "outputs": [],
+          "branches": [
+            "default",
+            "autonomous"
+          ],
+          "mapping": {
+            "autonomous": "autonomous"
+          }
+        },
+        "ctx-offeringContext-emit_context_payload": {
+          "component_type": "OutputMessageNode",
+          "id": "ctx-offeringContext-emit_context_payload",
+          "name": "Emit resolved context as agent message",
+          "inputs": [
+            {
+              "title": "candidates",
+              "type": "array",
+              "json_schema": {
+                "items": {
+                  "type": "object"
+                }
+              }
+            },
+            {
+              "title": "slotMeta",
+              "type": "object"
+            },
+            {
+              "title": "selectedRefs",
+              "type": "array",
+              "json_schema": {
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          ],
+          "message": "{# pyagentspec-input-hint (do not remove): {{ candidates }} {{ slotMeta }} {{ selectedRefs }} #}{\"candidates\":{{ candidates | tojson }},\"slotMeta\":{{ slotMeta | tojson }},\"selectedRefs\":{{ selectedRefs | tojson }}}"
+        },
+        "ctx-offeringContext-context_select_gate": {
+          "component_type": "InputMessageNode",
+          "id": "ctx-offeringContext-context_select_gate",
+          "name": "Select context",
+          "metadata": {
+            "cinatra": {
+              "riskClass": "read_only",
+              "requiresApproval": true,
+              "renderer": "@cinatra-ai/context-selection-agent:context-selector",
+              "a2uiSurfaceId": "context-selection:select"
+            }
+          },
+          "outputs": [
+            {
+              "title": "userResponse",
+              "type": "string"
+            }
+          ]
+        },
+        "ctx-offeringContext-finalize_interactive": {
+          "component_type": "ApiNode",
+          "id": "ctx-offeringContext-finalize_interactive",
+          "name": "Finalize selected context (interactive)",
+          "url": "{{CINATRA_BASE_URL}}/api/context-finalize",
+          "http_method": "POST",
+          "data": {
+            "parentRunId": "{{ parentRunId }}",
+            "parentPackageName": "{{ parentPackageName }}",
+            "slotId": "{{ slotId }}",
+            "projectId": "{{ projectId }}",
+            "selectionMode": "{{ selectionMode }}",
+            "userResponse": "{{ userResponse }}"
+          },
+          "inputs": [
+            {
+              "title": "parentRunId",
+              "type": "string"
+            },
+            {
+              "title": "parentPackageName",
+              "type": "string"
+            },
+            {
+              "title": "slotId",
+              "type": "string"
+            },
+            {
+              "title": "projectId",
+              "type": "string",
+              "default": ""
+            },
+            {
+              "title": "selectionMode",
+              "type": "string"
+            },
+            {
+              "title": "userResponse",
+              "type": "string"
+            }
+          ],
+          "outputs": [
+            {
+              "title": "contextSlotBindings",
+              "type": "array",
+              "json_schema": {
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          ]
+        },
+        "ctx-offeringContext-finalize_autonomous": {
+          "component_type": "ApiNode",
+          "id": "ctx-offeringContext-finalize_autonomous",
+          "name": "Finalize selected context (autonomous)",
+          "url": "{{CINATRA_BASE_URL}}/api/context-finalize",
+          "http_method": "POST",
+          "data": {
+            "parentRunId": "{{ parentRunId }}",
+            "parentPackageName": "{{ parentPackageName }}",
+            "slotId": "{{ slotId }}",
+            "projectId": "{{ projectId }}",
+            "selectionMode": "{{ selectionMode }}",
+            "userResponse": "{# pyagentspec-input-hint (do not remove): {{ slotId }} {{ resolutionMode }} {{ selectedRefs }} #}{\"slotId\":{{ slotId | tojson }},\"resolutionMode\":{{ resolutionMode | tojson }},\"selectedRefs\":{{ selectedRefs | tojson }}}"
+          },
+          "inputs": [
+            {
+              "title": "parentRunId",
+              "type": "string"
+            },
+            {
+              "title": "parentPackageName",
+              "type": "string"
+            },
+            {
+              "title": "slotId",
+              "type": "string"
+            },
+            {
+              "title": "projectId",
+              "type": "string",
+              "default": ""
+            },
+            {
+              "title": "selectionMode",
+              "type": "string"
+            },
+            {
+              "title": "resolutionMode",
+              "type": "string"
+            },
+            {
+              "title": "selectedRefs",
+              "type": "array",
+              "json_schema": {
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          ],
+          "outputs": [
+            {
+              "title": "contextSlotBindings",
+              "type": "array",
+              "json_schema": {
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          ]
+        },
+        "ctx-offeringContext-end": {
+          "component_type": "EndNode",
+          "id": "ctx-offeringContext-end",
+          "name": "Outputs",
+          "outputs": [
+            {
+              "title": "contextSlotBindings",
+              "type": "array",
+              "json_schema": {
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          ],
+          "inputs": [
+            {
+              "title": "contextSlotBindings",
+              "type": "array",
+              "json_schema": {
+                "items": {
+                  "type": "object"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "context_offeringContext": {
+      "component_type": "FlowNode",
+      "id": "context_offeringContext",
+      "name": "Resolve offeringContext",
+      "subflow": {
+        "$component_ref": "context-offeringContext-subflow"
+      },
+      "metadata": {
+        "cinatra": {
+          "purpose": "author-placed-context-resolution-for-offeringContext"
+        }
+      }
+    }
+  }
+}
