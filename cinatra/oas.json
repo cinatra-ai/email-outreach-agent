@@ -8,7 +8,7 @@
     "cinatra": {
       "type": "flow",
       "packageName": "@cinatra-ai/email-outreach-agent",
-      "packageVersion": "0.1.10",
+      "packageVersion": "0.1.0",
       "docsRef": "docs/developer/wayflow-input-message-node-contract.md",
       "hitlScreens": [
         "@cinatra-ai/email-outreach-agent:setup-form",
