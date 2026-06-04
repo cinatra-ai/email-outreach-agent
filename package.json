@@ -1,6 +1,6 @@
 {
   "name": "@cinatra-ai/email-outreach-agent",
-  "version": "0.1.10",
+  "version": "0.1.0",
   "license": "Apache-2.0",
   "description": "Email outreach workflow orchestrator: create campaign inline, then generate recipients, review skills, draft emails, run quality review, then send.",
   "type": "module",
