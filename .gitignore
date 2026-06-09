@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output (tsconfig outDir)
+dist/
+
+# Test output
+coverage/
+
+# Lockfiles are intentionally not committed (see .github/workflows/ci.yml)
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# npm pack output
+*.tgz
+
+# Environment files
+.env
+.env.*
+
+# Logs
+*.log
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
