@@ -100,6 +100,28 @@
       "@cinatra-ai/reviewer-agent": "^0.1.0",
       "@cinatra-ai/email-delivery-agent": "^0.1.0",
       "@cinatra-ai/context-selection-agent": "^0.1.1"
-    }
+    },
+    "fieldRenderers": [
+      {
+        "id": "@cinatra-ai/email-outreach-agent:gmail-sender",
+        "kind": "gmail-sender",
+        "priority": 100
+      },
+      {
+        "id": "@cinatra-ai/email-outreach-agent:list-picker",
+        "kind": "list-picker",
+        "priority": 90
+      },
+      {
+        "id": "@cinatra-ai/email-outreach-agent:setup-form",
+        "kind": "wayflow-setup-form",
+        "priority": 60
+      },
+      {
+        "id": "@cinatra-ai/email-outreach-agent:cta",
+        "kind": "cta",
+        "priority": 90
+      }
+    ]
   }
 }
