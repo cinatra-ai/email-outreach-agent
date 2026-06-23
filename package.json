@@ -93,14 +93,6 @@
     "hasApprovalGates": true,
     "toolAccess": [],
     "ownerOrgId": null,
-    "agentDependencies": {
-      "@cinatra-ai/email-recipient-selection-agent": "^0.1.0",
-      "@cinatra-ai/skill-recommender-agent": "^0.1.0",
-      "@cinatra-ai/email-drafting-agent": "^0.1.0",
-      "@cinatra-ai/reviewer-agent": "^0.1.0",
-      "@cinatra-ai/email-delivery-agent": "^0.1.0",
-      "@cinatra-ai/context-selection-agent": "^0.1.0"
-    },
     "fieldRenderers": [
       {
         "id": "@cinatra-ai/email-outreach-agent:gmail-sender",
