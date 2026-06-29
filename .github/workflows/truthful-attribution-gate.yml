@@ -1,7 +1,7 @@
 name: truthful-attribution-gate
 # Thin caller for the org-reusable truthful-attribution-gate (cinatra-ai/ci),
-# per ratified spec cinatra-engineering#119 (re-scopes/supersedes #116). WARN mode
-# (eng#119 rollout): findings are annotated but do not fail the check once the
+# per the ratified truthful-attribution spec. WARN mode
+# (rollout): findings are annotated but do not fail the check once the
 # reusable workflow starts — it stays advisory and never blocks a PR on a finding.
 # No .github/gate-suite.json committed (WARN scope exercises presence + the human
 # arm; the gate-suite arm is not exercised without a suite).
