@@ -114,6 +114,7 @@
         "kind": "cta",
         "priority": 90
       }
-    ]
+    ],
+    "consumes": []
   }
 }
