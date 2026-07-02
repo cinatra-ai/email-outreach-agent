@@ -18,7 +18,6 @@
         "@cinatra-ai/email-drafting-agent:output",
         "@cinatra-ai/reviewer-agent:output",
         "@cinatra-ai/email-delivery-agent:output",
-        "@cinatra-ai/email-test-delivery-agent:input",
         "@cinatra-ai/trigger-agent:configure",
         "@cinatra-ai/context-selection-agent:context-selector"
       ],
