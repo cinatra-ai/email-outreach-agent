@@ -16,8 +16,8 @@
         "packageName": "@cinatra-ai/context-selection-agent",
         "edgeType": "runtime",
         "versionConstraint": {
-          "kind": "exact",
-          "version": "0.1.0"
+          "kind": "semver-range",
+          "range": "^0.1.0"
         },
         "requirement": "required",
         "kind": "agent"
@@ -26,8 +26,8 @@
         "packageName": "@cinatra-ai/email-delivery-agent",
         "edgeType": "runtime",
         "versionConstraint": {
-          "kind": "exact",
-          "version": "0.1.0"
+          "kind": "semver-range",
+          "range": "^0.1.0"
         },
         "requirement": "required",
         "kind": "agent"
@@ -36,8 +36,8 @@
         "packageName": "@cinatra-ai/email-drafting-agent",
         "edgeType": "runtime",
         "versionConstraint": {
-          "kind": "exact",
-          "version": "0.1.0"
+          "kind": "semver-range",
+          "range": "^0.1.0"
         },
         "requirement": "required",
         "kind": "agent"
@@ -46,8 +46,8 @@
         "packageName": "@cinatra-ai/email-recipient-selection-agent",
         "edgeType": "runtime",
         "versionConstraint": {
-          "kind": "exact",
-          "version": "0.1.0"
+          "kind": "semver-range",
+          "range": "^0.1.0"
         },
         "requirement": "required",
         "kind": "agent"
@@ -56,8 +56,8 @@
         "packageName": "@cinatra-ai/reviewer-agent",
         "edgeType": "runtime",
         "versionConstraint": {
-          "kind": "exact",
-          "version": "0.1.0"
+          "kind": "semver-range",
+          "range": "^0.1.0"
         },
         "requirement": "required",
         "kind": "agent"
@@ -66,8 +66,8 @@
         "packageName": "@cinatra-ai/skill-recommender-agent",
         "edgeType": "runtime",
         "versionConstraint": {
-          "kind": "exact",
-          "version": "0.1.0"
+          "kind": "semver-range",
+          "range": "^0.1.0"
         },
         "requirement": "required",
         "kind": "agent"
@@ -76,8 +76,8 @@
         "packageName": "@cinatra-ai/trigger-agent",
         "edgeType": "runtime",
         "versionConstraint": {
-          "kind": "exact",
-          "version": "0.1.0"
+          "kind": "semver-range",
+          "range": "^0.1.0"
         },
         "requirement": "required",
         "kind": "agent"
