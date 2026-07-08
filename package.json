@@ -11,6 +11,7 @@
   "cinatra": {
     "apiVersion": "cinatra.ai/v1",
     "kind": "agent",
+    "displayName": "Email Outreach Agent",
     "dependencies": [
       {
         "packageName": "@cinatra-ai/context-selection-agent",
