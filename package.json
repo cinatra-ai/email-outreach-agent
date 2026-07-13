@@ -1,6 +1,6 @@
 {
   "name": "@cinatra-ai/email-outreach-agent",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "license": "Apache-2.0",
   "files": [
     "cinatra",
@@ -65,16 +65,6 @@
       },
       {
         "packageName": "@cinatra-ai/skill-recommender-agent",
-        "edgeType": "runtime",
-        "versionConstraint": {
-          "kind": "semver-range",
-          "range": "^0.1.0"
-        },
-        "requirement": "required",
-        "kind": "agent"
-      },
-      {
-        "packageName": "@cinatra-ai/trigger-agent",
         "edgeType": "runtime",
         "versionConstraint": {
           "kind": "semver-range",
