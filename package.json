@@ -24,6 +24,16 @@
         "kind": "agent"
       },
       {
+        "packageName": "@cinatra-ai/email-artifacts",
+        "edgeType": "runtime",
+        "versionConstraint": {
+          "kind": "semver-range",
+          "range": "^0.1.0"
+        },
+        "requirement": "required",
+        "kind": "artifact"
+      },
+      {
         "packageName": "@cinatra-ai/email-delivery-agent",
         "edgeType": "runtime",
         "versionConstraint": {
@@ -85,11 +95,6 @@
     "toolAccess": [],
     "ownerOrgId": null,
     "fieldRenderers": [
-      {
-        "id": "@cinatra-ai/email-outreach-agent:gmail-sender",
-        "kind": "gmail-sender",
-        "priority": 100
-      },
       {
         "id": "@cinatra-ai/email-outreach-agent:list-picker",
         "kind": "list-picker",
