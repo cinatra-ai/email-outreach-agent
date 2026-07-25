@@ -13,7 +13,6 @@
         "@cinatra-ai/email-outreach-agent:setup-form",
         "@cinatra-ai/email-outreach-agent:list-picker",
         "@cinatra-ai/email-recipient-selection-agent:output",
-        "@cinatra-ai/skill-recommender-agent:recommend",
         "@cinatra-ai/email-drafting-agent:output",
         "@cinatra-ai/reviewer-agent:output",
         "@cinatra-ai/email-delivery-agent:output",
@@ -76,9 +75,6 @@
       "$component_ref": "recipients_flow"
     },
     {
-      "$component_ref": "skills_flow"
-    },
-    {
       "$component_ref": "context_offeringContext"
     },
     {
@@ -124,16 +120,6 @@
     },
     {
       "component_type": "ControlFlowEdge",
-      "name": "recipients_flow_to_skills_flow",
-      "from_node": {
-        "$component_ref": "recipients_flow"
-      },
-      "to_node": {
-        "$component_ref": "skills_flow"
-      }
-    },
-    {
-      "component_type": "ControlFlowEdge",
       "name": "sender_flow_to_end",
       "from_node": {
         "$component_ref": "sender_flow"
@@ -154,9 +140,9 @@
     },
     {
       "component_type": "ControlFlowEdge",
-      "name": "skills_flow_to_drafts_flow",
+      "name": "recipients_flow_to_context_offeringContext",
       "from_node": {
-        "$component_ref": "skills_flow"
+        "$component_ref": "recipients_flow"
       },
       "to_node": {
         "$component_ref": "context_offeringContext"
@@ -305,18 +291,6 @@
         "$component_ref": "sender_flow"
       },
       "destination_input": "approvedDraftBundleRef"
-    },
-    {
-      "component_type": "DataFlowEdge",
-      "name": "start_to_skills_flow_agent_run_id",
-      "source_node": {
-        "$component_ref": "start"
-      },
-      "source_output": "cinatra_run_id",
-      "destination_node": {
-        "$component_ref": "skills_flow"
-      },
-      "destination_input": "agent_run_id"
     },
     {
       "component_type": "DataFlowEdge",
@@ -1713,155 +1687,6 @@
           "outputs": [
             {
               "title": "userResponse",
-              "type": "string"
-            }
-          ]
-        }
-      }
-    },
-    "skills_flow": {
-      "component_type": "FlowNode",
-      "id": "skills_flow",
-      "name": "Skill review",
-      "subflow": {
-        "$component_ref": "skill-recommender-subflow"
-      },
-      "metadata": {
-        "cinatra": {
-          "packageName": "@cinatra-ai/skill-recommender-agent"
-        }
-      }
-    },
-    "skill-recommender-subflow": {
-      "agentspec_version": "26.1.0",
-      "component_type": "Flow",
-      "id": "skill-recommender-subflow",
-      "name": "Skill Recommender Agent",
-      "inputs": [
-        {
-          "title": "agent_run_id",
-          "type": "string",
-          "default": ""
-        }
-      ],
-      "outputs": [
-        {
-          "title": "confirmed",
-          "type": "string"
-        }
-      ],
-      "start_node": {
-        "$component_ref": "skills-start"
-      },
-      "nodes": [
-        {
-          "$component_ref": "skills-start"
-        },
-        {
-          "$component_ref": "skills-recommend_gate"
-        },
-        {
-          "$component_ref": "skills-end"
-        }
-      ],
-      "control_flow_connections": [
-        {
-          "component_type": "ControlFlowEdge",
-          "name": "skills-start_to_recommend_gate",
-          "from_node": {
-            "$component_ref": "skills-start"
-          },
-          "to_node": {
-            "$component_ref": "skills-recommend_gate"
-          }
-        },
-        {
-          "component_type": "ControlFlowEdge",
-          "name": "skills-recommend_gate_to_end",
-          "from_node": {
-            "$component_ref": "skills-recommend_gate"
-          },
-          "to_node": {
-            "$component_ref": "skills-end"
-          }
-        }
-      ],
-      "data_flow_connections": [
-        {
-          "component_type": "DataFlowEdge",
-          "name": "skills-recommend_gate_to_end_confirmed",
-          "source_node": {
-            "$component_ref": "skills-recommend_gate"
-          },
-          "source_output": "confirmed",
-          "destination_node": {
-            "$component_ref": "skills-end"
-          },
-          "destination_input": "confirmed"
-        }
-      ],
-      "$referenced_components": {
-        "skills-start": {
-          "component_type": "StartNode",
-          "id": "skills-start",
-          "name": "Inputs",
-          "metadata": {
-            "cinatra": {
-              "required": [],
-              "hidden": [
-                "agent_run_id"
-              ]
-            }
-          },
-          "inputs": [
-            {
-              "title": "agent_run_id",
-              "type": "string",
-              "default": ""
-            }
-          ]
-        },
-        "skills-recommend_gate": {
-          "component_type": "InputMessageNode",
-          "id": "skills-recommend_gate",
-          "name": "Review skills",
-          "metadata": {
-            "cinatra": {
-              "riskClass": "read_only",
-              "requiresApproval": true,
-              "renderer": "@cinatra-ai/skill-recommender-agent:recommend",
-              "a2uiSurfaceId": "email-outreach:skills:recommend",
-              "autoSkipWhenInputsPresent": false,
-              "description": "Review the skills that will guide the email drafting step.",
-              "inputMessageSchema": {
-                "type": "object",
-                "x-renderer": "@cinatra-ai/skill-recommender-agent:recommend",
-                "properties": {
-                  "confirmed": {
-                    "type": "boolean",
-                    "title": "Confirmed"
-                  }
-                },
-                "required": [
-                  "confirmed"
-                ]
-              }
-            }
-          },
-          "outputs": [
-            {
-              "title": "confirmed",
-              "type": "string"
-            }
-          ]
-        },
-        "skills-end": {
-          "component_type": "EndNode",
-          "id": "skills-end",
-          "name": "End",
-          "outputs": [
-            {
-              "title": "confirmed",
               "type": "string"
             }
           ]
