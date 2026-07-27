@@ -8,6 +8,9 @@
   ],
   "description": "Email outreach workflow orchestrator: create campaign inline, then generate recipients, draft emails, run quality review, then send.",
   "type": "module",
+  "scripts": {
+    "test": "node tests/run.mjs"
+  },
   "cinatra": {
     "apiVersion": "cinatra.ai/v1",
     "kind": "agent",
@@ -55,16 +58,6 @@
       },
       {
         "packageName": "@cinatra-ai/email-recipient-selection-agent",
-        "edgeType": "runtime",
-        "versionConstraint": {
-          "kind": "semver-range",
-          "range": "^0.1.0"
-        },
-        "requirement": "required",
-        "kind": "agent"
-      },
-      {
-        "packageName": "@cinatra-ai/reviewer-agent",
         "edgeType": "runtime",
         "versionConstraint": {
           "kind": "semver-range",
