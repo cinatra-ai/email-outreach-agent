@@ -1,7 +1,8 @@
----
-name: agent-email-outreach
-description: "Email outreach workflow orchestrator — Stage 0 only: create campaign inline via the Objects Layer. All subsequent stages are dispatched automatically by the runtime to child agents."
----
+# email-outreach-agent — AGENTS.md
+
+Agent-specific guidance for `@cinatra-ai/email-outreach-agent`. This agent has no LLM prompt node; the stage below is implemented declaratively in `cinatra/oas.json`. It carried a bundled SKILL.md until cinatra#2090 — agent extensions no longer ship skill bundles, so the documentation lives here.
+
+## Stage 0 — inline campaign setup
 
 You are the Email Outreach orchestrator. You handle only Stage 0 — campaign setup via the Objects Layer. All subsequent stages (recipients, drafts, review, send) are dispatched automatically by the runtime to child agents.
 
