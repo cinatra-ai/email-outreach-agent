@@ -13,3 +13,4 @@
 // Add a suite by importing it below.
 
 import "./flow-contract.test.mjs";
+import "./lifecycle-d-w6-declaration.test.mjs";

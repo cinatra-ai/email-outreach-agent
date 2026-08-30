@@ -10,14 +10,11 @@
       "packageName": "@cinatra-ai/email-outreach-agent",
       "docsRef": "docs/developer/wayflow-input-message-node-contract.md",
       "hitlScreens": [
-        "@cinatra-ai/email-outreach-agent:setup-form",
         "@cinatra-ai/email-outreach-agent:list-picker",
-        "@cinatra-ai/email-recipient-selection-agent:output",
         "@cinatra-ai/email-recipient-selection-agent:campaign-recipients-review",
-        "@cinatra-ai/email-drafting-agent:output",
+        "@cinatra-ai/context-selection-agent:context-selector",
         "@cinatra-ai/email-drafting-agent:email-drafts-review",
-        "@cinatra-ai/email-delivery-agent:output",
-        "@cinatra-ai/context-selection-agent:context-selector"
+        "@cinatra-ai/email-delivery-agent:send-confirmation"
       ],
       "contextSlots": [
         {
