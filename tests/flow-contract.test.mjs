@@ -147,7 +147,7 @@ test("the setup hold survives as the start form the run opens with", () => {
   for (const field of ["offeringCompanyWebsite", "callToAction", "senderName"]) {
     assert.ok(titles.includes(field), `the start form stopped asking for ${field}`);
   }
-  assert.deepEqual(start.metadata.cinatra.required, ["offeringCompanyWebsite", "callToAction"]);
+  assert.deepEqual(start.metadata.cinatra.required, ["offeringCompanyWebsite", "callToAction", "senderName"]);
 });
 
 test("the holds that require an explicit approval still require it", () => {

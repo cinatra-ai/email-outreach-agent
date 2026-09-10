@@ -79,7 +79,9 @@ test("(1) the start form asks for the three setup fields the pause used to ask f
     );
     assert.ok(!(start.metadata.cinatra.hidden ?? []).includes(field), `${field} is hidden on the start form`);
   }
-  assert.deepEqual(start.metadata.cinatra.required, ["offeringCompanyWebsite", "callToAction"]);
+  // The setup form draws exactly the fields named in metadata.cinatra.required,
+  // so all three of the fields the retired pause used to ask for are named there.
+  assert.deepEqual(start.metadata.cinatra.required, ["offeringCompanyWebsite", "callToAction", "senderName"]);
   assert.equal(start.metadata.cinatra.renderer, `${PKG}:setup-form`);
   assert.equal(start.metadata.cinatra.inputRenderers.callToAction, `${PKG}:cta`);
 });
@@ -92,6 +94,28 @@ test("(1) the setup write reads the start form, not a gate output", () => {
     !dataEdges(oas).some(([from]) => from.startsWith("setup_gate.")),
     "a data edge still leaves the retired setup pause",
   );
+});
+
+test("every start-node input is either drawn on a form or supplied by the flow", () => {
+  const starts = [];
+  const walk = (node) => {
+    if (node === null || typeof node !== "object") return;
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (node.component_type === "StartNode") starts.push(node);
+    Object.values(node).forEach(walk);
+  };
+  walk(oas);
+  assert.ok(starts.length > 0, "the composite has no start node");
+  for (const start of starts) {
+    const required = new Set(start.metadata?.cinatra?.required ?? []);
+    const hidden = new Set(start.metadata?.cinatra?.hidden ?? []);
+    for (const input of start.inputs ?? []) {
+      assert.ok(
+        required.has(input.title) || hidden.has(input.title),
+        `${start.id}.${input.title} is neither drawn on a form nor supplied by the flow`,
+      );
+    }
+  }
 });
 
 test("(1) the drafting data gate is retired and its failure ends the run with its reason", () => {
