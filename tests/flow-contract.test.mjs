@@ -125,8 +125,12 @@ test("every human hold the flow used to park at is still present", () => {
   // The moments a run stops and waits for the operator. `recipients-review_gate`
   // and `drafts-approval_gate` are the two the reviewer agent used to RENDER;
   // they are this flow's own nodes and must outlive the dependency.
+  //
+  // The setup hold is no longer one of them: W8 (cinatra#3096 item 1) folded it
+  // into the start form, so the same three fields are asked BEFORE the run
+  // begins instead of at a pause one step in. The control the person had is
+  // asserted below on the start form itself.
   for (const id of [
-    "setup_gate",
     "recipients-scope_gate",
     "recipients-review_gate",
     "drafts-approval_gate",
@@ -136,9 +140,18 @@ test("every human hold the flow used to park at is still present", () => {
   }
 });
 
+test("the setup hold survives as the start form the run opens with", () => {
+  assert.equal(inputMessageNodes.get("setup_gate"), undefined, "the setup pause came back");
+  const start = refs.start;
+  const titles = start.inputs.map((i) => i.title);
+  for (const field of ["offeringCompanyWebsite", "callToAction", "senderName"]) {
+    assert.ok(titles.includes(field), `the start form stopped asking for ${field}`);
+  }
+  assert.deepEqual(start.metadata.cinatra.required, ["offeringCompanyWebsite", "callToAction"]);
+});
+
 test("the holds that require an explicit approval still require it", () => {
   for (const id of [
-    "setup_gate",
     "recipients-review_gate",
     "drafts-approval_gate",
     "sender-approval_gate",
