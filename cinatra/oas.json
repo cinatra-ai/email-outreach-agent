@@ -495,7 +495,8 @@
           ],
           "required": [
             "offeringCompanyWebsite",
-            "callToAction"
+            "callToAction",
+            "senderName"
           ],
           "renderer": "@cinatra-ai/email-outreach-agent:setup-form",
           "a2uiSurfaceId": "email-outreach:step-0:setup",
@@ -890,7 +891,8 @@
             "cinatra": {
               "required": [],
               "hidden": [
-                "agent_run_id"
+                "agent_run_id",
+                "accountScope"
               ]
             }
           },
@@ -1965,7 +1967,9 @@
           "name": "Inputs",
           "metadata": {
             "cinatra": {
-              "required": [],
+              "required": [
+                "senderEmail"
+              ],
               "hidden": [
                 "agent_run_id",
                 "confirmedRecipientsRef",
