@@ -397,18 +397,6 @@
     },
     {
       "component_type": "DataFlowEdge",
-      "name": "context_setup_to_campaign_summary_campaignId",
-      "source_node": {
-        "$component_ref": "context_setup"
-      },
-      "source_output": "campaignId",
-      "destination_node": {
-        "$component_ref": "campaign_summary"
-      },
-      "destination_input": "campaignId"
-    },
-    {
-      "component_type": "DataFlowEdge",
       "name": "recipients_flow_to_campaign_summary_recipientCount",
       "source_node": {
         "$component_ref": "recipients_flow"
@@ -1143,6 +1131,11 @@
               }
             }
           }
+        },
+        {
+          "title": "draftBundleRef",
+          "type": "string",
+          "default": ""
         }
       ],
       "outputs": [
@@ -1439,7 +1432,8 @@
                 "callToAction",
                 "senderName",
                 "confirmedRecipientsRef",
-                "contextSlotBindings"
+                "contextSlotBindings",
+                "draftBundleRef"
               ]
             }
           },
@@ -1498,6 +1492,11 @@
                   }
                 }
               }
+            },
+            {
+              "title": "draftBundleRef",
+              "type": "string",
+              "default": ""
             }
           ]
         },
@@ -2957,10 +2956,6 @@
       "name": "Campaign results",
       "inputs": [
         {
-          "title": "campaignId",
-          "type": "string"
-        },
-        {
           "title": "recipientCount",
           "type": "integer"
         },
@@ -2969,7 +2964,7 @@
           "type": "object"
         }
       ],
-      "message": "{# pyagentspec-input-hint (do not remove): {{ campaignId }} {{ recipientCount }} {{ sendResult }} #}{% if not recipientCount %}This campaign ended without sending anything: no recipients came out of the contact source you picked, so there was nothing to draft or send.{% elif sendResult and sendResult.status == 'failed' %}The campaign reached {{ recipientCount }} recipients in drafting, but the emails could not be sent: {{ sendResult.summary }}. Nothing was delivered.{% else %}The campaign is finished: {{ recipientCount }} recipients were drafted and sent. {{ sendResult.summary }}{% endif %}",
+      "message": "{# pyagentspec-input-hint (do not remove): {{ recipientCount }} {{ sendResult }} #}{% if not recipientCount %}This campaign ended without sending anything: no recipients came out of the contact source you picked, so there was nothing to draft or send.{% elif sendResult and sendResult.status == 'failed' %}The campaign reached {{ recipientCount }} recipients in drafting, but the emails could not be sent: {{ sendResult.summary }}. Nothing was delivered.{% else %}The campaign is finished: {{ recipientCount }} recipients were drafted and sent. {{ sendResult.summary }}{% endif %}",
       "metadata": {
         "cinatra": {
           "purpose": "plain-language-campaign-ending"
