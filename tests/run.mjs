@@ -15,3 +15,4 @@
 import "./flow-contract.test.mjs";
 import "./lifecycle-d-w6-declaration.test.mjs";
 import "./lifecycle-d-w8-flow.test.mjs";
+import "./oas-bridge-output-declarations.test.mjs";
