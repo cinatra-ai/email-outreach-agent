@@ -1,0 +1,76 @@
+{
+  "$comment": "Named, versioned machine-verification suite for cinatra-ai/email-outreach-agent — the gate-arm half of the truthful verification-record model (the Truthful Attribution protocol §4). The truthful-attribution-gate reads THIS file at the merged SHA (authoritative, no TOCTOU) when a merge record carries a Gate-suite arm: the cited suiteId@version must equal this file's, the Accountable trailer must equal accountable{github,name,email}, and every requiredContexts entry must have concluded success on the reviewed head. The four gate entries name exactly the contexts this repository's main ruleset requires, each with the reusable workflow it calls and the sha this repository's own caller pins; the truthful-attribution-gate context is named WITHOUT a workflow/pinned pair, because its engine pin lives in this repository's own caller (.github/workflows/truthful-attribution-gate.yml, itself a high-risk path) and the merge road reads that context by name. highRiskPaths EXTENDS the central cinatra-ai/ci defaults (the gate verifies the effective set is a superset; this repository adds no glob of its own — .github/** and **/gate-suite.json are already central defaults and the repository carries no release or publish script). High-risk changes (this file is itself one — see **/gate-suite.json in the defaults) require the HUMAN arm at tier=maintainer; the gate arm alone is rejected, so this file's birth carries a maintainer Reviewed-by, not a self-blessing gate arm. lastAuditedAt + auditEvidence are the §4 monthly-audit record; the Accountable engineer re-audits monthly and bumps BOTH coupled in one commit (the gate warns >35d, fails the gate arm >65d; the human arm is always still available).",
+  "suiteId": "email-outreach-agent-core",
+  "version": "2026.09.1",
+  "accountable": {
+    "name": "Sandro Groganz",
+    "email": "sandro@cinatra.ai",
+    "github": "groganz"
+  },
+  "requiredContexts": [
+    {
+      "context": "actions-pinned-gate / actions-pinned-gate",
+      "workflow": "cinatra-ai/ci/.github/workflows/actions-pinned-gate.yml",
+      "pinned": "4c903fe9ca71ad47752a2bc92b72893e5f7c9814"
+    },
+    {
+      "context": "gitignore-gate / gitignore-gate",
+      "workflow": "cinatra-ai/ci/.github/workflows/gitignore-gate.yml",
+      "pinned": "4c903fe9ca71ad47752a2bc92b72893e5f7c9814"
+    },
+    {
+      "context": "source-leak-gate / source-leak-gate",
+      "workflow": "cinatra-ai/ci/.github/workflows/source-leak-gate.yml",
+      "pinned": "00ac7b92c2ca1ca291a1824d743cbd00c4a3e48e"
+    },
+    {
+      "context": "secret-scan-gate / secret-scan-gate",
+      "workflow": "cinatra-ai/ci/.github/workflows/secret-scan-gate.yml",
+      "pinned": "a8677e50ba02fcb11929e94c70fb5ba96a8ea3ae"
+    },
+    {
+      "context": "truthful-attribution-gate / truthful-attribution-gate",
+      "callerPath": ".github/workflows/truthful-attribution-gate.yml",
+      "allowedEvents": ["pull_request", "push", "merge_group"]
+    }
+  ],
+  "highRiskPaths": [
+    "**/auth/**",
+    "**/permissions/**",
+    "**/session*",
+    "**/session/**",
+    "src/lib/auth*",
+    "src/lib/auth/**",
+    "**/webhooks/**/verify*",
+    "**/*signature*verif*",
+    "**/secrets/**",
+    "**/migrations/**",
+    "**/schema.prisma",
+    "**/schema.sql",
+    "**/*.migration.*",
+    ".github/**",
+    "**/CODEOWNERS",
+    "**/release*.sh",
+    "**/publish*.sh",
+    "scripts/release/**",
+    "scripts/publish/**",
+    "**/gate-suite.json",
+    "config/high-risk-defaults.json",
+    ".github/workflows/truthful-attribution-gate.yml",
+    "packages/sdk-extensions/**",
+    "**/extension-loader/**",
+    "**/trust-gate/**",
+    "**/signature-gate/**",
+    "**/capability-registry/**",
+    "**/transport-registry/**",
+    "**/integrations-registry.json",
+    "docs-site/astro.config.mjs",
+    "docs-site/integrations-registry.json",
+    "docs-site/src/content.config.ts",
+    "scripts/docs-contract-gate.mjs",
+    "scripts/lib/docs-contract-rules.mjs",
+    "scripts/sync-docs.mjs"
+  ],
+  "lastAuditedAt": "2026-09-15",
+  "auditEvidence": "2026-09-15 birth of this suite (engineering#674, under engineering#669): on this pull request's head every context it lists was read green — the four contexts the main ruleset requires (actions-pinned-gate, gitignore-gate, source-leak-gate, secret-scan-gate), each pinned to the sha this repository's own caller workflow pins at this head, and the truthful-attribution-gate context named by its caller path, whose engine pin lives in that caller."
+}
