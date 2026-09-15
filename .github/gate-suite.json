@@ -62,7 +62,14 @@
     "**/trust-gate/**",
     "**/signature-gate/**",
     "**/capability-registry/**",
-    "**/transport-registry/**"
+    "**/transport-registry/**",
+    "**/integrations-registry.json",
+    "docs-site/astro.config.mjs",
+    "docs-site/integrations-registry.json",
+    "docs-site/src/content.config.ts",
+    "scripts/docs-contract-gate.mjs",
+    "scripts/lib/docs-contract-rules.mjs",
+    "scripts/sync-docs.mjs"
   ],
   "lastAuditedAt": "2026-09-15",
   "auditEvidence": "2026-09-15 birth of this suite (engineering#674, under engineering#669): on this pull request's head every context it lists was read green — the four contexts the main ruleset requires (actions-pinned-gate, gitignore-gate, source-leak-gate, secret-scan-gate), each pinned to the sha this repository's own caller workflow pins at this head, and the truthful-attribution-gate context named by its caller path, whose engine pin lives in that caller."
