@@ -1,6 +1,6 @@
 {
   "name": "@cinatra-ai/email-outreach-agent",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "license": "Apache-2.0",
   "files": [
     "cinatra"
@@ -82,7 +82,8 @@
         "kind": "list-picker",
         "priority": 90,
         "params": {
-          "listBuilderPackage": "@cinatra-ai/list-curator-agent"
+          "selection": "multiple",
+          "minSelected": 1
         }
       },
       {
