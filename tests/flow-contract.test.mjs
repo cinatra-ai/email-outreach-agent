@@ -205,3 +205,77 @@ test("the two review gate renderers are advertised as HITL screens", () => {
     assert.ok(flowMeta.hitlScreens.includes(id), `hitlScreens is missing "${id}"`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// 4. Account scope — the step takes one or more of the connected CRM's views
+//    or lists, at least one of them, and offers no road out to another agent
+//    (cinatra#3562, the half this repository owns: the DECLARATION).
+// ---------------------------------------------------------------------------
+
+const LIST_PICKER_ID = "@cinatra-ai/email-outreach-agent:list-picker";
+const listPicker = pkg.cinatra.fieldRenderers.find((r) => r.id === LIST_PICKER_ID);
+const recipientsGenerate =
+  refs["email-recipient-selection-subflow"].$referenced_components["recipients-generate"];
+const generatePrompt = recipientsGenerate.data.system;
+
+/** `name` as a whole word — so `sourceListId` never matches on `sourceListIds`. */
+const namesExactly = (text, name) => new RegExp(`${name}(?![A-Za-z0-9_])`).test(text);
+
+test("the account scope step declares no road out to a list-building run", () => {
+  assert.ok(listPicker, `the manifest stopped declaring the "${LIST_PICKER_ID}" renderer`);
+  assert.ok(
+    !pkgRaw.includes("listBuilderPackage"),
+    "the manifest still declares listBuilderPackage — the road out of the step is still there",
+  );
+});
+
+test("the account scope binding declares a multi-select with a floor of one", () => {
+  assert.equal(listPicker.params.selection, "multiple");
+  assert.equal(listPicker.params.minSelected, 1);
+});
+
+test("the generate step resolves every ticked list, not only the first", () => {
+  assert.ok(namesExactly(generatePrompt, "listIds"), "the prompt never names listIds");
+  assert.match(generatePrompt, /MUST pick one or more saved CRM lists/);
+  assert.match(generatePrompt, /For EACH id in selectedListIds/);
+  assert.match(generatePrompt, /crm_list_get\(\{ id \}\)/);
+  assert.match(generatePrompt, /crm_list_members_get\(\{ listId: id \}\)/);
+  assert.match(generatePrompt, /UNION the per-list contactIds into one array in first-seen order/);
+});
+
+test("a scope carrying only the legacy single listId is still read as one list", () => {
+  assert.match(generatePrompt, /bare `listId`[\s\S]{0,160}one-element list/);
+});
+
+test("the generate step no longer reads a single identifier off the scope", () => {
+  for (const legacy of [
+    "crm_list_get({ id: accountScope.listId })",
+    "crm_list_members_get({ listId: accountScope.listId })",
+  ]) {
+    assert.ok(!generatePrompt.includes(legacy), `the prompt still calls ${legacy}`);
+  }
+});
+
+test("the saved bundle keeps its first-list provenance and gains the ticked-order arrays", () => {
+  for (const field of ["sourceListId", "sourceListName", "sourceListIds", "sourceListNames"]) {
+    assert.ok(
+      namesExactly(generatePrompt, field),
+      `the objects_save contract no longer names ${field}`,
+    );
+  }
+});
+
+test("the account scope hold is still one gate this flow owns, answered as a string", () => {
+  const steps = refs.recipients_flow.metadata.cinatra.gateSteps.filter(
+    (s) => s.name === "Account scope",
+  );
+  assert.equal(steps.length, 1, "the flow no longer declares exactly one Account scope gate step");
+  assert.equal(steps[0].renderer, LIST_PICKER_ID);
+  assert.equal(steps[0].gateCount, 1);
+  assert.equal(steps[0].hitlOwnedBy, "self");
+
+  const outputs = inputMessageNodes.get("recipients-scope_gate").outputs;
+  assert.equal(outputs.length, 1, "the scope gate no longer takes exactly one answer");
+  assert.equal(outputs[0].title, "accountScope");
+  assert.equal(outputs[0].type, "string");
+});
