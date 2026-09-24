@@ -1,6 +1,6 @@
 {
   "name": "@cinatra-ai/email-outreach-agent",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "license": "Apache-2.0",
   "files": [
     "cinatra"
@@ -83,7 +83,9 @@
         "priority": 90,
         "params": {
           "selection": "multiple",
-          "minSelected": 1
+          "minSelected": 1,
+          "question": "Which views or lists in your CRM should this run take its recipients from?",
+          "emptyState": "There are no views or lists to pick from yet. Create one in your CRM, then open this step again."
         }
       },
       {
