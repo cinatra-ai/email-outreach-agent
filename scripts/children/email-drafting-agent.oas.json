@@ -1,0 +1,950 @@
+{
+  "agentspec_version": "26.1.0",
+  "component_type": "Flow",
+  "id": "email-drafting-flow",
+  "name": "Email Drafting Agent",
+  "description": "Generates personalized email drafts for a list of recipients based on the campaign context and objectives.",
+  "metadata": {
+    "cinatra": {
+      "type": "node",
+      "hitlScreens": [
+        "@cinatra-ai/email-drafting-agent:email-drafts-review"
+      ],
+      "packageName": "@cinatra-ai/email-drafting-agent",
+      "produces": [
+        {
+          "extension": "@cinatra-ai/email-artifacts",
+          "objectTypeId": "@cinatra-ai/email:body"
+        }
+      ]
+    }
+  },
+  "inputs": [
+    {
+      "title": "agent_run_id",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "title": "offeringCompanyWebsite",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "title": "callToAction",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "title": "senderName",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "title": "confirmedRecipientsRef",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "title": "contextSlotBindings",
+      "type": "array",
+      "default": [],
+      "json_schema": {
+        "items": {
+          "type": "object",
+          "properties": {
+            "artifactId": {
+              "type": "string"
+            },
+            "representationRevisionId": {
+              "type": "string"
+            },
+            "semanticAssertionId": {
+              "type": "string"
+            },
+            "extension": {
+              "type": "string"
+            },
+            "sourceScope": {
+              "type": "string"
+            },
+            "ownerId": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "title": "draftBundleRef",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "title": "campaignId",
+      "type": "string",
+      "json_schema": {
+        "format": "uuid"
+      },
+      "default": ""
+    }
+  ],
+  "outputs": [
+    {
+      "title": "draftBundle",
+      "type": "object"
+    },
+    {
+      "title": "draftBundleTitle",
+      "type": "string"
+    },
+    {
+      "title": "draftBundleDocument",
+      "type": "string"
+    },
+    {
+      "title": "userResponse",
+      "type": "string"
+    },
+    {
+      "title": "draftBundleRef",
+      "type": "string",
+      "json_schema": {
+        "format": "uuid"
+      }
+    }
+  ],
+  "start_node": {
+    "$component_ref": "start"
+  },
+  "nodes": [
+    {
+      "$component_ref": "start"
+    },
+    {
+      "$component_ref": "uuid_match"
+    },
+    {
+      "$component_ref": "check_inputs_predicate"
+    },
+    {
+      "$component_ref": "check_inputs"
+    },
+    {
+      "$component_ref": "inputs_missing"
+    },
+    {
+      "$component_ref": "draft"
+    },
+    {
+      "$component_ref": "approval_gate"
+    },
+    {
+      "$component_ref": "apply"
+    },
+    {
+      "$component_ref": "drafting_summary"
+    },
+    {
+      "$component_ref": "end"
+    }
+  ],
+  "control_flow_connections": [
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "start_to_uuid_match",
+      "from_node": {
+        "$component_ref": "start"
+      },
+      "to_node": {
+        "$component_ref": "uuid_match"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "uuid_match_to_predicate",
+      "from_node": {
+        "$component_ref": "uuid_match"
+      },
+      "to_node": {
+        "$component_ref": "check_inputs_predicate"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "predicate_to_check_inputs",
+      "from_node": {
+        "$component_ref": "check_inputs_predicate"
+      },
+      "to_node": {
+        "$component_ref": "check_inputs"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "check_inputs_skip_to_draft",
+      "from_node": {
+        "$component_ref": "check_inputs"
+      },
+      "from_branch": "skip",
+      "to_node": {
+        "$component_ref": "draft"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "check_inputs_default_to_inputs_missing",
+      "from_node": {
+        "$component_ref": "check_inputs"
+      },
+      "to_node": {
+        "$component_ref": "inputs_missing"
+      },
+      "from_branch": "default"
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "inputs_missing_to_end",
+      "from_node": {
+        "$component_ref": "inputs_missing"
+      },
+      "to_node": {
+        "$component_ref": "end"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "draft_to_approval_gate",
+      "from_node": {
+        "$component_ref": "draft"
+      },
+      "to_node": {
+        "$component_ref": "approval_gate"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "approval_gate_to_apply",
+      "from_node": {
+        "$component_ref": "approval_gate"
+      },
+      "to_node": {
+        "$component_ref": "apply"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "apply_to_drafting_summary",
+      "from_node": {
+        "$component_ref": "apply"
+      },
+      "to_node": {
+        "$component_ref": "drafting_summary"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "drafting_summary_to_end",
+      "from_node": {
+        "$component_ref": "drafting_summary"
+      },
+      "to_node": {
+        "$component_ref": "end"
+      }
+    }
+  ],
+  "data_flow_connections": [
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_to_draft_agent_run_id",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "agent_run_id",
+      "destination_node": {
+        "$component_ref": "draft"
+      },
+      "destination_input": "agent_run_id"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_to_draft_offeringCompanyWebsite",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "offeringCompanyWebsite",
+      "destination_node": {
+        "$component_ref": "draft"
+      },
+      "destination_input": "offeringCompanyWebsite"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_to_draft_callToAction",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "callToAction",
+      "destination_node": {
+        "$component_ref": "draft"
+      },
+      "destination_input": "callToAction"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_to_draft_senderName",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "senderName",
+      "destination_node": {
+        "$component_ref": "draft"
+      },
+      "destination_input": "senderName"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_to_draft_confirmedRecipientsRef",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "confirmedRecipientsRef",
+      "destination_node": {
+        "$component_ref": "draft"
+      },
+      "destination_input": "confirmedRecipientsRef"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "draft_to_end_draftBundleRef",
+      "source_node": {
+        "$component_ref": "draft"
+      },
+      "source_output": "draftBundleRef",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "draftBundleRef"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_to_uuid_match_text",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "confirmedRecipientsRef",
+      "destination_node": {
+        "$component_ref": "uuid_match"
+      },
+      "destination_input": "text"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "uuid_match_to_predicate_matches",
+      "source_node": {
+        "$component_ref": "uuid_match"
+      },
+      "source_output": "output",
+      "destination_node": {
+        "$component_ref": "check_inputs_predicate"
+      },
+      "destination_input": "matches"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "predicate_to_check_inputs_verdict",
+      "source_node": {
+        "$component_ref": "check_inputs_predicate"
+      },
+      "source_output": "output",
+      "destination_node": {
+        "$component_ref": "check_inputs"
+      },
+      "destination_input": "verdict"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_to_draft_contextSlotBindings",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "contextSlotBindings",
+      "destination_node": {
+        "$component_ref": "draft"
+      },
+      "destination_input": "contextSlotBindings"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "draft_to_approval_gate_draftBodyArtifacts",
+      "source_node": {
+        "$component_ref": "draft"
+      },
+      "source_output": "draftBodyArtifacts",
+      "destination_node": {
+        "$component_ref": "approval_gate"
+      },
+      "destination_input": "draftBodyArtifacts"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "draft_to_approval_gate_draftBundleRef",
+      "source_node": {
+        "$component_ref": "draft"
+      },
+      "source_output": "draftBundleRef",
+      "destination_node": {
+        "$component_ref": "approval_gate"
+      },
+      "destination_input": "draftBundleRef"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_to_draft_campaignId",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "campaignId",
+      "destination_node": {
+        "$component_ref": "draft"
+      },
+      "destination_input": "campaignId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "apply_to_end_draftBundle",
+      "source_node": {
+        "$component_ref": "apply"
+      },
+      "source_output": "reviewedBundle",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "draftBundle"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "draft_to_end_draftBundleTitle",
+      "source_node": {
+        "$component_ref": "draft"
+      },
+      "source_output": "draftBundleTitle",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "draftBundleTitle"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "apply_to_end_draftBundleDocument",
+      "source_node": {
+        "$component_ref": "apply"
+      },
+      "source_output": "reviewedDocument",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "draftBundleDocument"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "approval_gate_to_end_userResponse",
+      "source_node": {
+        "$component_ref": "approval_gate"
+      },
+      "source_output": "userResponse",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "userResponse"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "approval_gate_to_apply_resumePayload",
+      "source_node": {
+        "$component_ref": "approval_gate"
+      },
+      "source_output": "userResponse",
+      "destination_node": {
+        "$component_ref": "apply"
+      },
+      "destination_input": "resumePayload"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_to_apply_agent_run_id",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "agent_run_id",
+      "destination_node": {
+        "$component_ref": "apply"
+      },
+      "destination_input": "agent_run_id"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "apply_to_drafting_summary_reviewedBundle",
+      "source_node": {
+        "$component_ref": "apply"
+      },
+      "source_output": "reviewedBundle",
+      "destination_node": {
+        "$component_ref": "drafting_summary"
+      },
+      "destination_input": "reviewedBundle"
+    }
+  ],
+  "$referenced_components": {
+    "start": {
+      "component_type": "StartNode",
+      "id": "start",
+      "name": "Inputs",
+      "metadata": {
+        "cinatra": {
+          "required": [],
+          "hidden": [
+            "agent_run_id",
+            "offeringCompanyWebsite",
+            "callToAction",
+            "senderName",
+            "confirmedRecipientsRef",
+            "contextSlotBindings",
+            "draftBundleRef",
+            "campaignId"
+          ]
+        }
+      },
+      "inputs": [
+        {
+          "title": "agent_run_id",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "offeringCompanyWebsite",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "callToAction",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "senderName",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "confirmedRecipientsRef",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "contextSlotBindings",
+          "type": "array",
+          "default": [],
+          "json_schema": {
+            "items": {
+              "type": "object",
+              "properties": {
+                "artifactId": {
+                  "type": "string"
+                },
+                "representationRevisionId": {
+                  "type": "string"
+                },
+                "semanticAssertionId": {
+                  "type": "string"
+                },
+                "extension": {
+                  "type": "string"
+                },
+                "sourceScope": {
+                  "type": "string"
+                },
+                "ownerId": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        {
+          "title": "draftBundleRef",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "campaignId",
+          "type": "string",
+          "json_schema": {
+            "format": "uuid"
+          },
+          "default": ""
+        }
+      ]
+    },
+    "draft": {
+      "component_type": "ApiNode",
+      "id": "draft",
+      "name": "Draft emails",
+      "url": "{{CINATRA_BASE_URL}}/api/llm-bridge",
+      "http_method": "POST",
+      "data": {
+        "system": "You are an email drafting agent.\n\nStep 1: Call objects_get with confirmedRecipientsRef to fetch the recipients list.\n\nStep 1b: For each entry of contextSlotBindings, call artifact_representation_get({ artifactId, representationRevisionId }) to read the pinned context the operator selected. Read the context ONLY through that road \u2014 never reach for the parent run's slot or project. Skip an entry the road refuses.\n\nStep 2: Generate exactly one personalized initial outreach email per recipient using offeringCompanyWebsite, callToAction, and senderName as context.\n\nStep 3 \u2014 CRITICAL: Call objects_save BEFORE returning any JSON. Use exactly this structure:\n  objects_save({\n    typeHint: \"@cinatra-ai/campaigns:email-draft-bundle\",\n    rawData: {\n      cinatra_agent_run_id: \"<agent_run_id input>\",\n      drafts: [\n        { recipientEmail: \"...\", subject: \"...\", body: \"...\", status: \"draft\" }\n      ]\n    }\n  })\n\nStep 4: Return ONLY this JSON using the object ID returned by objects_save: {\"draftBundleRef\":\"<objectId returned by objects_save>\",\"draftBundleTitle\":\"<short title, e.g. Email draft bundle (N recipients)>\",\"draftBodyArtifacts\":[{\"artifactId\":\"<id>\",\"representationRevisionId\":\"<revision>\"}],\"summary\":\"<one sentence summary>\"}. draftBodyArtifacts lists one @cinatra-ai/email:body artifact per draft, in recipient order, so the review screen can display the bodies themselves.\n\nDo NOT return draftBundleRef without completing Step 3. Never skip objects_save. Do not send emails \u2014 this agent only drafts.",
+        "user": "Execute the email drafting task now and return the result as JSON.\nInputs:\n- offeringCompanyWebsite: {{ offeringCompanyWebsite }}\n- callToAction: {{ callToAction }}\n- senderName: {{ senderName }}\n- confirmedRecipientsRef: {{ confirmedRecipientsRef }}\n- contextSlotBindings: {{ contextSlotBindings }}\n- campaignId: {{ campaignId }}",
+        "agent_id": "email-drafting",
+        "agent_run_id": "{{ agent_run_id }}",
+        "cinatra_llm": {
+          "preferredProvider": "openai",
+          "preferredModel": "gpt-5.5"
+        }
+      },
+      "outputs": [
+        {
+          "title": "draftBundleRef",
+          "type": "string",
+          "json_schema": {
+            "format": "uuid"
+          }
+        },
+        {
+          "title": "draftBodyArtifacts",
+          "type": "array",
+          "json_schema": {
+            "items": {
+              "type": "object",
+              "properties": {
+                "artifactId": {
+                  "type": "string"
+                },
+                "representationRevisionId": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        {
+          "title": "draftBundleTitle",
+          "type": "string"
+        }
+      ],
+      "metadata": {
+        "cinatra": {
+          "riskClass": "draft_create",
+          "requiresApproval": true,
+          "renderer": "@cinatra-ai/email-drafting-agent:output",
+          "a2uiSurfaceId": "email-drafting:step-1:output"
+        }
+      },
+      "inputs": [
+        {
+          "title": "agent_run_id",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "offeringCompanyWebsite",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "callToAction",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "senderName",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "confirmedRecipientsRef",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "contextSlotBindings",
+          "type": "array",
+          "default": [],
+          "json_schema": {
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "title": "campaignId",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    "drafting_summary": {
+      "component_type": "OutputMessageNode",
+      "id": "drafting_summary",
+      "name": "Drafting result",
+      "inputs": [
+        {
+          "title": "reviewedBundle",
+          "type": "object",
+          "default": {}
+        }
+      ],
+      "message": "{# pyagentspec-input-hint (do not remove): {{ reviewedBundle }} #}{% if not reviewedBundle or not reviewedBundle.drafts %}No emails were drafted in this run: there were no recipients to write to, or no draft could be written for them.{% else %}{{ reviewedBundle.drafts | length }} email drafts were reviewed and saved.{% endif %}",
+      "metadata": {
+        "cinatra": {
+          "purpose": "plain-language-drafting-ending"
+        }
+      }
+    },
+    "end": {
+      "component_type": "EndNode",
+      "id": "end",
+      "name": "End",
+      "outputs": [
+        {
+          "title": "draftBundle",
+          "type": "object",
+          "default": {}
+        },
+        {
+          "title": "draftBundleTitle",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "draftBundleDocument",
+          "type": "string",
+          "cinatra": {
+            "artifact": {
+              "extension": "@cinatra-ai/email-artifacts",
+              "objectTypeId": "@cinatra-ai/email:body",
+              "contentFrom": "draftBundleDocument",
+              "declaredMime": "text/markdown",
+              "titleFrom": "draftBundleTitle"
+            }
+          },
+          "default": ""
+        },
+        {
+          "title": "userResponse",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "draftBundleRef",
+          "type": "string",
+          "json_schema": {
+            "format": "uuid"
+          },
+          "default": ""
+        }
+      ]
+    },
+    "approval_gate": {
+      "component_type": "InputMessageNode",
+      "id": "approval_gate",
+      "name": "Review drafts",
+      "metadata": {
+        "cinatra": {
+          "riskClass": "approval",
+          "requiresApproval": true,
+          "renderer": "@cinatra-ai/email-drafting-agent:email-drafts-review",
+          "a2uiSurfaceId": "email-drafting:review:input",
+          "autoSkipWhenInputsPresent": false,
+          "description": "Read the drafted emails, then approve, send them back for revision, or reject the run.",
+          "inputMessageSchema": {
+            "type": "object",
+            "x-renderer": "@cinatra-ai/email-drafting-agent:email-drafts-review",
+            "properties": {
+              "draftBodyArtifacts": {
+                "type": "array",
+                "title": "Drafted emails",
+                "x-artifact-kind": "@cinatra-ai/email:body",
+                "x-artifact-read": "artifact_representation_get",
+                "items": {
+                  "type": "object"
+                },
+                "readOnly": true
+              },
+              "draftBundleRef": {
+                "type": "string",
+                "title": "Draft bundle",
+                "readOnly": true
+              },
+              "decision": {
+                "type": "string",
+                "title": "Decision",
+                "enum": [
+                  "approve",
+                  "revise",
+                  "reject"
+                ],
+                "description": "Approve the step, send it back for revision, or reject the run."
+              },
+              "note": {
+                "type": "string",
+                "title": "Note"
+              }
+            },
+            "required": [
+              "decision"
+            ]
+          },
+          "surfaceGateInputs": true
+        }
+      },
+      "outputs": [
+        {
+          "title": "userResponse",
+          "type": "string"
+        }
+      ],
+      "inputs": [
+        {
+          "title": "draftBodyArtifacts",
+          "type": "array",
+          "json_schema": {
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "title": "draftBundleRef",
+          "type": "string",
+          "default": ""
+        }
+      ]
+    },
+    "apply": {
+      "component_type": "ApiNode",
+      "id": "apply",
+      "name": "Persist reviewed drafts",
+      "url": "{{CINATRA_BASE_URL}}/api/agents/passthrough",
+      "http_method": "POST",
+      "data": {
+        "tool": "email_outreach_initial_drafts_update",
+        "input": {
+          "resumePayloadJson": "{{ resumePayload }}"
+        },
+        "agent_run_id": "{{ agent_run_id }}"
+      },
+      "outputs": [
+        {
+          "title": "ok",
+          "type": "boolean"
+        },
+        {
+          "title": "reviewedBundle",
+          "type": "object"
+        },
+        {
+          "title": "reviewedDocument",
+          "type": "string"
+        }
+      ],
+      "metadata": {
+        "cinatra": {
+          "riskClass": "draft_update",
+          "requiresApproval": false
+        }
+      }
+    },
+    "uuid_match": {
+      "component_type": "PluginRegexNode",
+      "id": "uuid_match",
+      "name": "uuid_match",
+      "metadata": {},
+      "inputs": [
+        {
+          "title": "text",
+          "type": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "title": "output",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "branches": [
+        "next"
+      ],
+      "input_mapping": {},
+      "output_mapping": {},
+      "regex_pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+      "return_first_match_only": false,
+      "component_plugin_name": "NodesPlugin",
+      "component_plugin_version": "26.1.0"
+    },
+    "check_inputs_predicate": {
+      "component_type": "PluginTemplateNode",
+      "id": "check_inputs_predicate",
+      "name": "check_inputs_predicate",
+      "metadata": {},
+      "inputs": [
+        {
+          "title": "matches"
+        }
+      ],
+      "outputs": [
+        {
+          "title": "output",
+          "type": "string"
+        }
+      ],
+      "branches": [
+        "next"
+      ],
+      "input_mapping": {},
+      "output_mapping": {},
+      "template": "{% if matches and (matches|length > 0) %}present{% else %}missing{% endif %}",
+      "component_plugin_name": "NodesPlugin",
+      "component_plugin_version": "26.1.0"
+    },
+    "check_inputs": {
+      "component_type": "BranchingNode",
+      "id": "check_inputs",
+      "name": "check_inputs",
+      "metadata": {
+        "cinatra": {
+          "purpose": "skip-data_gate-when-confirmedRecipientsRef-is-valid-uuid"
+        }
+      },
+      "inputs": [
+        {
+          "title": "verdict",
+          "type": "string"
+        }
+      ],
+      "outputs": [],
+      "branches": [
+        "default",
+        "skip"
+      ],
+      "mapping": {
+        "present": "skip"
+      }
+    },
+    "inputs_missing": {
+      "component_type": "OutputMessageNode",
+      "id": "inputs_missing",
+      "name": "No recipients to draft for",
+      "inputs": [],
+      "message": "This run stopped before drafting: no approved recipient list reached the drafting step, so there was nobody to write to. Start the campaign again and approve a recipient list first.",
+      "metadata": {
+        "cinatra": {
+          "purpose": "plain-language-ending-for-the-retired-data-gate"
+        }
+      }
+    }
+  }
+}

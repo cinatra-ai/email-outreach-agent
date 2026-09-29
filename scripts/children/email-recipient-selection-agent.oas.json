@@ -1,0 +1,616 @@
+{
+  "agentspec_version": "26.1.0",
+  "component_type": "Flow",
+  "id": "email-recipient-selection-flow",
+  "name": "Email Recipient Selection Agent",
+  "description": "Builds a qualified recipient list for an email campaign from configured contact sources.",
+  "metadata": {
+    "cinatra": {
+      "type": "node",
+      "hitlScreens": [
+        "@cinatra-ai/email-outreach-agent:list-picker",
+        "@cinatra-ai/email-recipient-selection-agent:campaign-recipients-review"
+      ],
+      "packageName": "@cinatra-ai/email-recipient-selection-agent"
+    }
+  },
+  "inputs": [
+    {
+      "title": "agent_run_id",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "title": "accountScope",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "title": "campaignId",
+      "type": "string",
+      "default": "",
+      "json_schema": {
+        "format": "uuid"
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "title": "campaignId",
+      "type": "string",
+      "json_schema": {
+        "format": "uuid"
+      }
+    },
+    {
+      "title": "recipientCount",
+      "type": "integer"
+    },
+    {
+      "title": "confirmedRecipients",
+      "type": "array",
+      "json_schema": {
+        "items": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "title": "userResponse",
+      "type": "string"
+    },
+    {
+      "title": "confirmedRecipientsRef",
+      "type": "string",
+      "json_schema": {
+        "format": "uuid"
+      }
+    }
+  ],
+  "start_node": {
+    "$component_ref": "start"
+  },
+  "nodes": [
+    {
+      "$component_ref": "start"
+    },
+    {
+      "$component_ref": "scope_gate"
+    },
+    {
+      "$component_ref": "generate"
+    },
+    {
+      "$component_ref": "approval_gate"
+    },
+    {
+      "$component_ref": "apply"
+    },
+    {
+      "$component_ref": "selection_summary"
+    },
+    {
+      "$component_ref": "end"
+    }
+  ],
+  "control_flow_connections": [
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "start_to_scope_gate",
+      "from_node": {
+        "$component_ref": "start"
+      },
+      "to_node": {
+        "$component_ref": "scope_gate"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "scope_gate_to_generate",
+      "from_node": {
+        "$component_ref": "scope_gate"
+      },
+      "to_node": {
+        "$component_ref": "generate"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "generate_to_approval_gate",
+      "from_node": {
+        "$component_ref": "generate"
+      },
+      "to_node": {
+        "$component_ref": "approval_gate"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "approval_gate_to_apply",
+      "from_node": {
+        "$component_ref": "approval_gate"
+      },
+      "to_node": {
+        "$component_ref": "apply"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "apply_to_selection_summary",
+      "from_node": {
+        "$component_ref": "apply"
+      },
+      "to_node": {
+        "$component_ref": "selection_summary"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "selection_summary_to_end",
+      "from_node": {
+        "$component_ref": "selection_summary"
+      },
+      "to_node": {
+        "$component_ref": "end"
+      }
+    }
+  ],
+  "data_flow_connections": [
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_to_generate_agent_run_id",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "agent_run_id",
+      "destination_node": {
+        "$component_ref": "generate"
+      },
+      "destination_input": "agent_run_id"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "scope_gate_to_generate_accountScope",
+      "source_node": {
+        "$component_ref": "scope_gate"
+      },
+      "source_output": "accountScope",
+      "destination_node": {
+        "$component_ref": "generate"
+      },
+      "destination_input": "accountScope"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_to_end_campaignId",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "campaignId",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "campaignId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "apply_to_end_recipientCount",
+      "source_node": {
+        "$component_ref": "apply"
+      },
+      "source_output": "reviewedCount",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "recipientCount"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "apply_to_end_confirmedRecipients",
+      "source_node": {
+        "$component_ref": "apply"
+      },
+      "source_output": "reviewedRecipients",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "confirmedRecipients"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "approval_gate_to_end_userResponse",
+      "source_node": {
+        "$component_ref": "approval_gate"
+      },
+      "source_output": "userResponse",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "userResponse"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "generate_to_approval_gate_confirmedRecipients",
+      "source_node": {
+        "$component_ref": "generate"
+      },
+      "source_output": "confirmedRecipients",
+      "destination_node": {
+        "$component_ref": "approval_gate"
+      },
+      "destination_input": "confirmedRecipients"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "approval_gate_to_apply_resumePayload",
+      "source_node": {
+        "$component_ref": "approval_gate"
+      },
+      "source_output": "userResponse",
+      "destination_node": {
+        "$component_ref": "apply"
+      },
+      "destination_input": "resumePayload"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_to_apply_agent_run_id",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "agent_run_id",
+      "destination_node": {
+        "$component_ref": "apply"
+      },
+      "destination_input": "agent_run_id"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "apply_to_selection_summary_recipientCount",
+      "source_node": {
+        "$component_ref": "apply"
+      },
+      "source_output": "reviewedCount",
+      "destination_node": {
+        "$component_ref": "selection_summary"
+      },
+      "destination_input": "recipientCount"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "generate_to_selection_summary_proposedCount",
+      "source_node": {
+        "$component_ref": "generate"
+      },
+      "source_output": "recipientCount",
+      "destination_node": {
+        "$component_ref": "selection_summary"
+      },
+      "destination_input": "proposedCount"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "generate_to_end_confirmedRecipientsRef",
+      "source_node": {
+        "$component_ref": "generate"
+      },
+      "source_output": "confirmedRecipientsRef",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "confirmedRecipientsRef"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "generate_to_approval_gate_recipientCount",
+      "source_node": {
+        "$component_ref": "generate"
+      },
+      "source_output": "recipientCount",
+      "destination_node": {
+        "$component_ref": "approval_gate"
+      },
+      "destination_input": "recipientCount"
+    }
+  ],
+  "$referenced_components": {
+    "scope_gate": {
+      "component_type": "InputMessageNode",
+      "id": "scope_gate",
+      "name": "Choose contact source",
+      "metadata": {
+        "cinatra": {
+          "riskClass": "read_only",
+          "requiresApproval": true,
+          "renderer": "@cinatra-ai/email-outreach-agent:list-picker",
+          "a2uiSurfaceId": "email-recipient-selection:step-0:scope",
+          "inputRenderers": {
+            "accountScope": "@cinatra-ai/email-outreach-agent:list-picker"
+          },
+          "autoSkipWhenInputsPresent": false
+        }
+      },
+      "outputs": [
+        {
+          "title": "accountScope",
+          "type": "string"
+        }
+      ]
+    },
+    "start": {
+      "component_type": "StartNode",
+      "id": "start",
+      "name": "Inputs",
+      "metadata": {
+        "cinatra": {
+          "required": [],
+          "hidden": [
+            "agent_run_id",
+            "accountScope",
+            "campaignId"
+          ]
+        }
+      },
+      "inputs": [
+        {
+          "title": "agent_run_id",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "accountScope",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "campaignId",
+          "type": "string",
+          "default": "",
+          "json_schema": {
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "generate": {
+      "component_type": "ApiNode",
+      "id": "generate",
+      "name": "Generate recipient list",
+      "url": "{{CINATRA_BASE_URL}}/api/llm-bridge",
+      "http_method": "POST",
+      "data": {
+        "system": "You are a campaign recipient fetch agent. Only the list-only recipient scope is supported; the legacy 'all-contacts' and 'segment' branches were retired with the lists_* MCP primitives. The operator MUST pick one or more saved CRM lists (typically curated by @cinatra-ai/list-curator-agent or imported from a connector).\n\nStep 1: Parse accountScope as JSON. ONLY type='list' is supported. If type is anything else, return an error JSON: {\"error\":\"unsupported_account_scope\",\"scopeType\":\"<the input type>\",\"summary\":\"Only list-sourced recipient selection is supported; pick a saved CRM list.\"}. Then read the ticked lists into selectedListIds, an ordered array of CRM list ids: when the parsed scope carries `listIds` (a non-empty array of list ids in the order the operator ticked them), selectedListIds = that array with duplicates removed, first occurrence kept; when it carries no `listIds` but a bare `listId` string, read that bare `listId` as a one-element list and selectedListIds = [accountScope.listId]. If it carries neither shape, or selectedListIds is empty, return the same unsupported_account_scope error JSON with scopeType 'list'.\n\nStep 2: For EACH id in selectedListIds, in order, call crm_list_get({ id }) to retrieve that list's metadata. Skip an id whose response is null (a stale list ref). Capture resolvedListIds and resolvedListNames — the ids that resolved and their result.name values, both in the ticked order — and listObjectType = the first resolved list's result.objectType. If no id resolves, return an empty-list envelope. Set listName = resolvedListNames[0].\n\nStep 3: For EACH id in resolvedListIds, in order, call crm_list_members_get({ listId: id }). Capture { contactIds, accountIds } per list. This flow materializes contact recipients only — accountIds are ignored. UNION the per-list contactIds into one array in first-seen order, removing duplicates, so a contact that appears in several of the ticked lists is fetched, filtered and counted ONCE. If the union is empty, return an empty-list envelope. Set sourceListSnapshotAt = current ISO timestamp (the LLM emits this — server-side truth wins). Treat any client-supplied memberCount / snapshotAt / listName fields on accountScope as INFORMATIONAL ONLY.\n\nStep 4: For each contactId in the unioned contactIds from Step 3, call crm_contact_get({ id: contactId }). Skip null responses (stale list refs). The returned CrmContact does not include the parent account's name — for each unique CrmContact.accountId, call crm_account_get({ id: accountId }) ONCE and cache account.name. Build the per-row recipient: { contactId: CrmContact.id, name, title: CrmContact.title ?? '', email: CrmContact.email ?? '', accountId: CrmContact.accountId ?? '', accountName: cached account.name ?? '' }. Filter to rows where name !== '' AND accountName !== ''. Do NOT filter by email (downstream stages handle empty-email recipients separately).\n\nRecipient limit, checked after Step 4 and before Step 5: the resolved recipient pool MUST NOT exceed the agent's cinatra.json.limits.maxRecipients (default 200). With several ticked lists the limit applies to their total: the unioned, filtered rows of Step 4, each contact counted once. If the count exceeds the cap, return an error JSON before objects_save: {\"error\":\"The ticked lists have N contacts which exceeds the maxRecipients limit of M. Pick fewer or smaller lists or override maxRecipients via the agent install settings.\"}. Do NOT silently truncate — fail/block, not truncate.\n\nStep 5 — CRITICAL: Call objects_save BEFORE returning any JSON. Use exactly this structure:\n  objects_save({\n    typeHint: \"@cinatra-ai/campaigns:recipients\",\n    rawData: {\n      cinatra_agent_run_id: \"<agent_run_id input>\",\n      confirmedRecipients: [ ...all contacts from Step 4... ],\n      recipientCount: <total number of contacts>,\n      sourceListId: \"<resolvedListIds[0]>\",\n      sourceListName: \"<resolvedListNames[0]>\",\n      sourceListIds: [ ...resolvedListIds in ticked order... ],\n      sourceListNames: [ ...resolvedListNames in ticked order... ],\n      sourceListMemberType: \"contact\",\n      sourceListSnapshotAt: \"<sourceListSnapshotAt from Step 3>\"\n    }\n  })\n\nStep 6: Return ONLY this JSON:\n{\"confirmedRecipientsRef\":\"<objectId from objects_save>\",\"recipientCount\":<n>,\"confirmedRecipients\":[...],\"summary\":\"Fetched <n> contacts from the ticked lists <resolvedListNames joined by commas>.\"}.\n\nDo NOT put data inside typeHint. Do NOT return JSON before completing Step 5.",
+        "user": "Execute the recipient fetch task now and return the result as JSON.\nInputs:\n- accountScope: {{ accountScope }}\n- agent_run_id: {{ agent_run_id }}",
+        "agent_id": "email-recipient-selection",
+        "agent_run_id": "{{ agent_run_id }}",
+        "cinatra_llm": {
+          "preferredProvider": "openai",
+          "preferredModel": "gpt-5.5"
+        }
+      },
+      "outputs": [
+        {
+          "title": "confirmedRecipientsRef",
+          "type": "string",
+          "json_schema": {
+            "format": "uuid"
+          }
+        },
+        {
+          "title": "recipientCount",
+          "type": "integer"
+        },
+        {
+          "title": "confirmedRecipients",
+          "type": "array",
+          "json_schema": {
+            "items": {
+              "type": "object",
+              "properties": {
+                "contactId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "email": {
+                  "type": "string"
+                },
+                "accountId": {
+                  "type": "string"
+                },
+                "accountName": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "metadata": {
+        "cinatra": {
+          "riskClass": "read_only",
+          "requiresApproval": true,
+          "renderer": "@cinatra-ai/email-recipient-selection-agent:output",
+          "a2uiSurfaceId": "email-recipient-selection:step-1:output"
+        }
+      }
+    },
+    "selection_summary": {
+      "component_type": "OutputMessageNode",
+      "id": "selection_summary",
+      "name": "Recipient selection result",
+      "inputs": [
+        {
+          "title": "recipientCount",
+          "type": "integer",
+          "default": 0
+        },
+        {
+          "title": "proposedCount",
+          "type": "integer",
+          "default": 0
+        }
+      ],
+      "message": "{# pyagentspec-input-hint (do not remove): {{ recipientCount }} {{ proposedCount }} #}{% if not recipientCount and not proposedCount %}No recipients were selected: the list you picked could not be read, was larger than the recipient limit, or held no contact with a name and a company, so nothing was added to the campaign.{% elif not recipientCount %}No recipients were confirmed: all {{ proposedCount }} proposed recipients were removed in the review.{% else %}{{ recipientCount }} recipients were confirmed for the campaign.{% endif %}",
+      "metadata": {
+        "cinatra": {
+          "purpose": "plain-language-recipient-selection-ending"
+        }
+      }
+    },
+    "end": {
+      "component_type": "EndNode",
+      "id": "end",
+      "name": "End",
+      "outputs": [
+        {
+          "title": "campaignId",
+          "type": "string",
+          "json_schema": {
+            "format": "uuid"
+          }
+        },
+        {
+          "title": "recipientCount",
+          "type": "integer"
+        },
+        {
+          "title": "confirmedRecipients",
+          "type": "array",
+          "json_schema": {
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "title": "userResponse",
+          "type": "string"
+        },
+        {
+          "title": "confirmedRecipientsRef",
+          "type": "string",
+          "json_schema": {
+            "format": "uuid"
+          }
+        }
+      ]
+    },
+    "approval_gate": {
+      "component_type": "InputMessageNode",
+      "id": "approval_gate",
+      "name": "Review recipients",
+      "outputs": [
+        {
+          "title": "userResponse",
+          "type": "string"
+        }
+      ],
+      "metadata": {
+        "cinatra": {
+          "riskClass": "read_only",
+          "requiresApproval": true,
+          "renderer": "@cinatra-ai/email-recipient-selection-agent:campaign-recipients-review",
+          "a2uiSurfaceId": "email-recipient-selection:review:input",
+          "autoSkipWhenInputsPresent": false,
+          "inputMessageSchema": {
+            "type": "object",
+            "x-renderer": "@cinatra-ai/email-recipient-selection-agent:campaign-recipients-review",
+            "properties": {
+              "confirmedRecipients": {
+                "type": "array",
+                "title": "Recipients",
+                "items": {
+                  "type": "object"
+                },
+                "readOnly": true
+              },
+              "recipientCount": {
+                "type": "integer",
+                "title": "Recipients found",
+                "readOnly": true
+              },
+              "decision": {
+                "type": "string",
+                "title": "Decision",
+                "enum": [
+                  "approve",
+                  "revise",
+                  "reject"
+                ],
+                "description": "Approve the step, send it back for revision, or reject the run."
+              },
+              "note": {
+                "type": "string",
+                "title": "Note"
+              }
+            },
+            "required": [
+              "decision"
+            ]
+          },
+          "description": "Review the recipients this campaign will write to, then approve, send back for revision, or reject.",
+          "surfaceGateInputs": true
+        }
+      },
+      "inputs": [
+        {
+          "title": "confirmedRecipients",
+          "type": "array",
+          "json_schema": {
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "title": "recipientCount",
+          "type": "integer"
+        }
+      ]
+    },
+    "apply": {
+      "component_type": "ApiNode",
+      "id": "apply",
+      "name": "Persist reviewed recipients",
+      "url": "{{CINATRA_BASE_URL}}/api/agents/passthrough",
+      "http_method": "POST",
+      "data": {
+        "tool": "email_outreach_recipients_update",
+        "input": {
+          "resumePayloadJson": "{{ resumePayload }}"
+        },
+        "agent_run_id": "{{ agent_run_id }}"
+      },
+      "outputs": [
+        {
+          "title": "ok",
+          "type": "boolean"
+        },
+        {
+          "title": "reviewedRecipients",
+          "type": "array",
+          "json_schema": {
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "title": "reviewedCount",
+          "type": "integer"
+        }
+      ],
+      "metadata": {
+        "cinatra": {
+          "riskClass": "recipients_update",
+          "requiresApproval": false
+        }
+      }
+    }
+  }
+}
