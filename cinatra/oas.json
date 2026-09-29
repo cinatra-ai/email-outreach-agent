@@ -466,6 +466,30 @@
         "$component_ref": "sender_flow"
       },
       "destination_input": "campaignId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "context_setup_to_recipients_flow_campaignId",
+      "source_node": {
+        "$component_ref": "context_setup"
+      },
+      "source_output": "campaignId",
+      "destination_node": {
+        "$component_ref": "recipients_flow"
+      },
+      "destination_input": "campaignId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "context_setup_to_drafts_flow_campaignId",
+      "source_node": {
+        "$component_ref": "context_setup"
+      },
+      "source_output": "campaignId",
+      "destination_node": {
+        "$component_ref": "drafts_flow"
+      },
+      "destination_input": "campaignId"
     }
   ],
   "$referenced_components": {
@@ -719,11 +743,19 @@
           "title": "accountScope",
           "type": "string",
           "default": ""
+        },
+        {
+          "title": "campaignId",
+          "type": "string",
+          "default": "",
+          "json_schema": {
+            "format": "uuid"
+          }
         }
       ],
       "outputs": [
         {
-          "title": "confirmedRecipientsRef",
+          "title": "campaignId",
           "type": "string",
           "json_schema": {
             "format": "uuid"
@@ -732,6 +764,17 @@
         {
           "title": "recipientCount",
           "type": "integer"
+        },
+        {
+          "title": "userResponse",
+          "type": "string"
+        },
+        {
+          "title": "confirmedRecipientsRef",
+          "type": "string",
+          "json_schema": {
+            "format": "uuid"
+          }
         }
       ],
       "start_node": {
@@ -757,7 +800,7 @@
       "control_flow_connections": [
         {
           "component_type": "ControlFlowEdge",
-          "name": "recipients-start_to_recipients-scope_gate",
+          "name": "recipients-start_to_scope_gate",
           "from_node": {
             "$component_ref": "recipients-start"
           },
@@ -767,7 +810,7 @@
         },
         {
           "component_type": "ControlFlowEdge",
-          "name": "recipients-scope_gate_to_recipients-generate",
+          "name": "recipients-scope_gate_to_generate",
           "from_node": {
             "$component_ref": "recipients-scope_gate"
           },
@@ -777,7 +820,7 @@
         },
         {
           "component_type": "ControlFlowEdge",
-          "name": "recipients-generate_to_recipients-review_gate",
+          "name": "recipients-generate_to_review_gate",
           "from_node": {
             "$component_ref": "recipients-generate"
           },
@@ -787,7 +830,7 @@
         },
         {
           "component_type": "ControlFlowEdge",
-          "name": "recipients-review_gate_to_recipients-end",
+          "name": "recipients-review_gate_to_end",
           "from_node": {
             "$component_ref": "recipients-review_gate"
           },
@@ -799,7 +842,7 @@
       "data_flow_connections": [
         {
           "component_type": "DataFlowEdge",
-          "name": "recipients-start_to_recipients-generate_agent_run_id",
+          "name": "recipients-start_to_generate_agent_run_id",
           "source_node": {
             "$component_ref": "recipients-start"
           },
@@ -811,7 +854,7 @@
         },
         {
           "component_type": "DataFlowEdge",
-          "name": "recipients-scope_gate_to_recipients-generate_accountScope",
+          "name": "recipients-scope_gate_to_generate_accountScope",
           "source_node": {
             "$component_ref": "recipients-scope_gate"
           },
@@ -823,27 +866,27 @@
         },
         {
           "component_type": "DataFlowEdge",
-          "name": "recipients-generate_to_recipients-end_confirmedRecipientsRef",
+          "name": "recipients-start_to_end_campaignId",
           "source_node": {
-            "$component_ref": "recipients-generate"
+            "$component_ref": "recipients-start"
           },
-          "source_output": "confirmedRecipientsRef",
+          "source_output": "campaignId",
           "destination_node": {
             "$component_ref": "recipients-end"
           },
-          "destination_input": "confirmedRecipientsRef"
+          "destination_input": "campaignId"
         },
         {
           "component_type": "DataFlowEdge",
-          "name": "recipients-generate_to_recipients-end_recipientCount",
+          "name": "recipients-review_gate_to_end_userResponse",
           "source_node": {
-            "$component_ref": "recipients-generate"
+            "$component_ref": "recipients-review_gate"
           },
-          "source_output": "recipientCount",
+          "source_output": "userResponse",
           "destination_node": {
             "$component_ref": "recipients-end"
           },
-          "destination_input": "recipientCount"
+          "destination_input": "userResponse"
         },
         {
           "component_type": "DataFlowEdge",
@@ -859,6 +902,18 @@
         },
         {
           "component_type": "DataFlowEdge",
+          "name": "recipients-generate_to_end_confirmedRecipientsRef",
+          "source_node": {
+            "$component_ref": "recipients-generate"
+          },
+          "source_output": "confirmedRecipientsRef",
+          "destination_node": {
+            "$component_ref": "recipients-end"
+          },
+          "destination_input": "confirmedRecipientsRef"
+        },
+        {
+          "component_type": "DataFlowEdge",
           "name": "recipients-generate_to_review_gate_recipientCount",
           "source_node": {
             "$component_ref": "recipients-generate"
@@ -868,9 +923,40 @@
             "$component_ref": "recipients-review_gate"
           },
           "destination_input": "recipientCount"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "recipients-generate_to_end_recipientCount",
+          "source_node": {
+            "$component_ref": "recipients-generate"
+          },
+          "source_output": "recipientCount",
+          "destination_node": {
+            "$component_ref": "recipients-end"
+          },
+          "destination_input": "recipientCount"
         }
       ],
       "$referenced_components": {
+        "recipients-scope_gate": {
+          "component_type": "InputMessageNode",
+          "id": "recipients-scope_gate",
+          "name": "Choose contact source",
+          "metadata": {
+            "cinatra": {
+              "inputRenderers": {
+                "accountScope": "@cinatra-ai/email-outreach-agent:list-picker"
+              },
+              "autoSkipWhenInputsPresent": false
+            }
+          },
+          "outputs": [
+            {
+              "title": "accountScope",
+              "type": "string"
+            }
+          ]
+        },
         "recipients-start": {
           "component_type": "StartNode",
           "id": "recipients-start",
@@ -880,7 +966,8 @@
               "required": [],
               "hidden": [
                 "agent_run_id",
-                "accountScope"
+                "accountScope",
+                "campaignId"
               ]
             }
           },
@@ -894,27 +981,16 @@
               "title": "accountScope",
               "type": "string",
               "default": ""
+            },
+            {
+              "title": "campaignId",
+              "type": "string",
+              "default": "",
+              "json_schema": {
+                "format": "uuid"
+              }
             }
           ]
-        },
-        "recipients-scope_gate": {
-          "component_type": "InputMessageNode",
-          "id": "recipients-scope_gate",
-          "name": "Choose contact source",
-          "outputs": [
-            {
-              "title": "accountScope",
-              "type": "string"
-            }
-          ],
-          "metadata": {
-            "cinatra": {
-              "inputRenderers": {
-                "accountScope": "@cinatra-ai/email-outreach-agent:list-picker"
-              },
-              "autoSkipWhenInputsPresent": false
-            }
-          }
         },
         "recipients-generate": {
           "component_type": "ApiNode",
@@ -985,7 +1061,7 @@
           "name": "End",
           "outputs": [
             {
-              "title": "confirmedRecipientsRef",
+              "title": "campaignId",
               "type": "string",
               "json_schema": {
                 "format": "uuid"
@@ -994,6 +1070,17 @@
             {
               "title": "recipientCount",
               "type": "integer"
+            },
+            {
+              "title": "userResponse",
+              "type": "string"
+            },
+            {
+              "title": "confirmedRecipientsRef",
+              "type": "string",
+              "json_schema": {
+                "format": "uuid"
+              }
             }
           ]
         },
@@ -1136,9 +1223,21 @@
           "title": "draftBundleRef",
           "type": "string",
           "default": ""
+        },
+        {
+          "title": "campaignId",
+          "type": "string",
+          "json_schema": {
+            "format": "uuid"
+          },
+          "default": ""
         }
       ],
       "outputs": [
+        {
+          "title": "userResponse",
+          "type": "string"
+        },
         {
           "title": "draftBundleRef",
           "type": "string",
@@ -1155,15 +1254,6 @@
           "$component_ref": "drafts-start"
         },
         {
-          "$component_ref": "drafts-draft"
-        },
-        {
-          "$component_ref": "drafts-approval_gate"
-        },
-        {
-          "$component_ref": "drafts-end"
-        },
-        {
           "$component_ref": "drafts-uuid_match"
         },
         {
@@ -1174,6 +1264,15 @@
         },
         {
           "$component_ref": "drafts-inputs_missing"
+        },
+        {
+          "$component_ref": "drafts-draft"
+        },
+        {
+          "$component_ref": "drafts-approval_gate"
+        },
+        {
+          "$component_ref": "drafts-end"
         }
       ],
       "control_flow_connections": [
@@ -1220,26 +1319,6 @@
         },
         {
           "component_type": "ControlFlowEdge",
-          "name": "drafts-draft_to_drafts-approval_gate",
-          "from_node": {
-            "$component_ref": "drafts-draft"
-          },
-          "to_node": {
-            "$component_ref": "drafts-approval_gate"
-          }
-        },
-        {
-          "component_type": "ControlFlowEdge",
-          "name": "drafts-approval_gate_to_drafts-end",
-          "from_node": {
-            "$component_ref": "drafts-approval_gate"
-          },
-          "to_node": {
-            "$component_ref": "drafts-end"
-          }
-        },
-        {
-          "component_type": "ControlFlowEdge",
           "name": "drafts-check_inputs_default_to_inputs_missing",
           "from_node": {
             "$component_ref": "drafts-check_inputs"
@@ -1251,9 +1330,29 @@
         },
         {
           "component_type": "ControlFlowEdge",
-          "name": "drafts-inputs_missing_to_drafts-end",
+          "name": "drafts-inputs_missing_to_end",
           "from_node": {
             "$component_ref": "drafts-inputs_missing"
+          },
+          "to_node": {
+            "$component_ref": "drafts-end"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "drafts-draft_to_approval_gate",
+          "from_node": {
+            "$component_ref": "drafts-draft"
+          },
+          "to_node": {
+            "$component_ref": "drafts-approval_gate"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "drafts-approval_gate_to_end",
+          "from_node": {
+            "$component_ref": "drafts-approval_gate"
           },
           "to_node": {
             "$component_ref": "drafts-end"
@@ -1263,7 +1362,7 @@
       "data_flow_connections": [
         {
           "component_type": "DataFlowEdge",
-          "name": "drafts-start_to_drafts-draft_agent_run_id",
+          "name": "drafts-start_to_draft_agent_run_id",
           "source_node": {
             "$component_ref": "drafts-start"
           },
@@ -1275,7 +1374,7 @@
         },
         {
           "component_type": "DataFlowEdge",
-          "name": "drafts-start_to_drafts-draft_offeringCompanyWebsite",
+          "name": "drafts-start_to_draft_offeringCompanyWebsite",
           "source_node": {
             "$component_ref": "drafts-start"
           },
@@ -1287,7 +1386,7 @@
         },
         {
           "component_type": "DataFlowEdge",
-          "name": "drafts-start_to_drafts-draft_callToAction",
+          "name": "drafts-start_to_draft_callToAction",
           "source_node": {
             "$component_ref": "drafts-start"
           },
@@ -1299,7 +1398,7 @@
         },
         {
           "component_type": "DataFlowEdge",
-          "name": "drafts-start_to_drafts-draft_senderName",
+          "name": "drafts-start_to_draft_senderName",
           "source_node": {
             "$component_ref": "drafts-start"
           },
@@ -1311,7 +1410,7 @@
         },
         {
           "component_type": "DataFlowEdge",
-          "name": "drafts-start_to_drafts-draft_confirmedRecipientsRef",
+          "name": "drafts-start_to_draft_confirmedRecipientsRef",
           "source_node": {
             "$component_ref": "drafts-start"
           },
@@ -1323,7 +1422,7 @@
         },
         {
           "component_type": "DataFlowEdge",
-          "name": "drafts-draft_to_drafts-end_draftBundleRef",
+          "name": "drafts-draft_to_end_draftBundleRef",
           "source_node": {
             "$component_ref": "drafts-draft"
           },
@@ -1371,19 +1470,7 @@
         },
         {
           "component_type": "DataFlowEdge",
-          "name": "drafts-start_to_drafts-draft_contextSlotBindings",
-          "source_node": {
-            "$component_ref": "drafts-start"
-          },
-          "source_output": "contextSlotBindings",
-          "destination_node": {
-            "$component_ref": "drafts-draft"
-          },
-          "destination_input": "contextSlotBindings"
-        },
-        {
-          "component_type": "DataFlowEdge",
-          "name": "drafts-start_to_drafts-draft_contextSlotBindings",
+          "name": "drafts-start_to_draft_contextSlotBindings",
           "source_node": {
             "$component_ref": "drafts-start"
           },
@@ -1416,6 +1503,18 @@
             "$component_ref": "drafts-approval_gate"
           },
           "destination_input": "draftBundleRef"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "drafts-approval_gate_to_end_userResponse",
+          "source_node": {
+            "$component_ref": "drafts-approval_gate"
+          },
+          "source_output": "userResponse",
+          "destination_node": {
+            "$component_ref": "drafts-end"
+          },
+          "destination_input": "userResponse"
         }
       ],
       "$referenced_components": {
@@ -1433,7 +1532,8 @@
                 "senderName",
                 "confirmedRecipientsRef",
                 "contextSlotBindings",
-                "draftBundleRef"
+                "draftBundleRef",
+                "campaignId"
               ]
             }
           },
@@ -1496,6 +1596,14 @@
             {
               "title": "draftBundleRef",
               "type": "string",
+              "default": ""
+            },
+            {
+              "title": "campaignId",
+              "type": "string",
+              "json_schema": {
+                "format": "uuid"
+              },
               "default": ""
             }
           ]
@@ -1590,11 +1698,17 @@
           "name": "End",
           "outputs": [
             {
+              "title": "userResponse",
+              "type": "string",
+              "default": ""
+            },
+            {
               "title": "draftBundleRef",
               "type": "string",
               "json_schema": {
                 "format": "uuid"
-              }
+              },
+              "default": ""
             }
           ]
         },
@@ -1828,10 +1942,10 @@
           "$component_ref": "sender-start"
         },
         {
-          "$component_ref": "sender-send"
+          "$component_ref": "sender-approval_gate"
         },
         {
-          "$component_ref": "sender-approval_gate"
+          "$component_ref": "sender-send"
         },
         {
           "$component_ref": "sender-end"
@@ -1840,17 +1954,7 @@
       "control_flow_connections": [
         {
           "component_type": "ControlFlowEdge",
-          "name": "sender-start_to_sender-approval_gate",
-          "from_node": {
-            "$component_ref": "sender-start"
-          },
-          "to_node": {
-            "$component_ref": "sender-approval_gate"
-          }
-        },
-        {
-          "component_type": "ControlFlowEdge",
-          "name": "sender-approval_gate_to_sender-send",
+          "name": "sender-approval_gate_to_send",
           "from_node": {
             "$component_ref": "sender-approval_gate"
           },
@@ -1860,7 +1964,17 @@
         },
         {
           "component_type": "ControlFlowEdge",
-          "name": "sender-send_to_sender-end",
+          "name": "sender-start_to_approval_gate",
+          "from_node": {
+            "$component_ref": "sender-start"
+          },
+          "to_node": {
+            "$component_ref": "sender-approval_gate"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "sender-send_to_end",
           "from_node": {
             "$component_ref": "sender-send"
           },
@@ -1872,43 +1986,43 @@
       "data_flow_connections": [
         {
           "component_type": "DataFlowEdge",
-          "name": "sender-start_to_sender-send_agent_run_id",
+          "name": "sender-start_campaignId_to_approval_gate",
           "source_node": {
             "$component_ref": "sender-start"
           },
-          "source_output": "agent_run_id",
+          "source_output": "campaignId",
           "destination_node": {
-            "$component_ref": "sender-send"
+            "$component_ref": "sender-approval_gate"
           },
-          "destination_input": "agent_run_id"
+          "destination_input": "campaignId"
         },
         {
           "component_type": "DataFlowEdge",
-          "name": "sender-start_to_sender-send_confirmedRecipientsRef",
-          "source_node": {
-            "$component_ref": "sender-start"
-          },
-          "source_output": "confirmedRecipientsRef",
-          "destination_node": {
-            "$component_ref": "sender-send"
-          },
-          "destination_input": "confirmedRecipientsRef"
-        },
-        {
-          "component_type": "DataFlowEdge",
-          "name": "sender-start_to_sender-send_senderEmail",
+          "name": "sender-start_senderEmail_to_approval_gate",
           "source_node": {
             "$component_ref": "sender-start"
           },
           "source_output": "senderEmail",
           "destination_node": {
-            "$component_ref": "sender-send"
+            "$component_ref": "sender-approval_gate"
           },
           "destination_input": "senderEmail"
         },
         {
           "component_type": "DataFlowEdge",
-          "name": "sender-start_to_sender-send_approvedDraftBundleRef",
+          "name": "sender-start_campaignId_to_send",
+          "source_node": {
+            "$component_ref": "sender-start"
+          },
+          "source_output": "campaignId",
+          "destination_node": {
+            "$component_ref": "sender-send"
+          },
+          "destination_input": "campaignId"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "sender-start_approvedDraftBundleRef_to_send",
           "source_node": {
             "$component_ref": "sender-start"
           },
@@ -1920,7 +2034,43 @@
         },
         {
           "component_type": "DataFlowEdge",
-          "name": "sender-send_to_sender-end_sendResult",
+          "name": "sender-start_confirmedRecipientsRef_to_send",
+          "source_node": {
+            "$component_ref": "sender-start"
+          },
+          "source_output": "confirmedRecipientsRef",
+          "destination_node": {
+            "$component_ref": "sender-send"
+          },
+          "destination_input": "confirmedRecipientsRef"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "sender-start_senderEmail_to_send",
+          "source_node": {
+            "$component_ref": "sender-start"
+          },
+          "source_output": "senderEmail",
+          "destination_node": {
+            "$component_ref": "sender-send"
+          },
+          "destination_input": "senderEmail"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "sender-start_agent_run_id_to_send",
+          "source_node": {
+            "$component_ref": "sender-start"
+          },
+          "source_output": "agent_run_id",
+          "destination_node": {
+            "$component_ref": "sender-send"
+          },
+          "destination_input": "agent_run_id"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "sender-send_sendResult_to_end",
           "source_node": {
             "$component_ref": "sender-send"
           },
@@ -1932,7 +2082,7 @@
         },
         {
           "component_type": "DataFlowEdge",
-          "name": "sender-approval_gate_to_sender-end_userResponse",
+          "name": "sender-approval_gate_userResponse_to_end",
           "source_node": {
             "$component_ref": "sender-approval_gate"
           },
@@ -1941,42 +2091,6 @@
             "$component_ref": "sender-end"
           },
           "destination_input": "userResponse"
-        },
-        {
-          "component_type": "DataFlowEdge",
-          "name": "sender-start_to_sender-send_campaignId",
-          "source_node": {
-            "$component_ref": "sender-start"
-          },
-          "source_output": "campaignId",
-          "destination_node": {
-            "$component_ref": "sender-send"
-          },
-          "destination_input": "campaignId"
-        },
-        {
-          "component_type": "DataFlowEdge",
-          "name": "sender-start_to_sender-approval_gate_campaignId",
-          "source_node": {
-            "$component_ref": "sender-start"
-          },
-          "source_output": "campaignId",
-          "destination_node": {
-            "$component_ref": "sender-approval_gate"
-          },
-          "destination_input": "campaignId"
-        },
-        {
-          "component_type": "DataFlowEdge",
-          "name": "sender-start_to_sender-approval_gate_senderEmail",
-          "source_node": {
-            "$component_ref": "sender-start"
-          },
-          "source_output": "senderEmail",
-          "destination_node": {
-            "$component_ref": "sender-approval_gate"
-          },
-          "destination_input": "senderEmail"
         }
       ],
       "$referenced_components": {
@@ -2039,92 +2153,6 @@
             }
           ]
         },
-        "sender-send": {
-          "component_type": "ApiNode",
-          "id": "sender-send",
-          "name": "Send campaign emails",
-          "url": "{{CINATRA_BASE_URL}}/api/llm-bridge",
-          "http_method": "POST",
-          "data": {
-            "system": "You are an email campaign sender agent. Fetch the confirmed recipients via objects_get(confirmedRecipientsRef) and the approved draft bundle via objects_get(approvedDraftBundleRef). You safely launch an approved outreach campaign and enforce an explicit human approval boundary before any real send. Record the send against campaignId. Return a structured result covering approval status, send status, and any operational issues. If objects_get returns null or wrong typeHint for any ref, set sendResult to an error object and do NOT send any email.",
-            "user": "Execute the email sending task now and return the result as JSON.\nInputs:\n- confirmedRecipientsRef: {{ confirmedRecipientsRef }}\n- approvedDraftBundleRef: {{ approvedDraftBundleRef }}\n- senderEmail: {{ senderEmail }}\n- campaignId: {{ campaignId }}",
-            "agent_id": "email-delivery",
-            "agent_run_id": "{{ agent_run_id }}"
-          },
-          "inputs": [
-            {
-              "title": "agent_run_id",
-              "type": "string",
-              "default": ""
-            },
-            {
-              "title": "confirmedRecipientsRef",
-              "type": "string",
-              "default": ""
-            },
-            {
-              "title": "senderEmail",
-              "type": "string",
-              "default": ""
-            },
-            {
-              "title": "approvedDraftBundleRef",
-              "type": "string",
-              "default": "",
-              "json_schema": {
-                "format": "uuid"
-              }
-            },
-            {
-              "title": "campaignId",
-              "type": "string",
-              "default": "",
-              "json_schema": {
-                "format": "uuid"
-              }
-            }
-          ],
-          "outputs": [
-            {
-              "title": "sendResult",
-              "type": "object",
-              "json_schema": {
-                "type": "object",
-                "properties": {
-                  "status": {
-                    "type": "string"
-                  },
-                  "summary": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          ],
-          "metadata": {
-            "cinatra": {
-              "riskClass": "email_send",
-              "requiresApproval": true,
-              "renderer": "@cinatra-ai/email-delivery-agent:output",
-              "a2uiSurfaceId": "email-delivery:step-1:output"
-            }
-          }
-        },
-        "sender-end": {
-          "component_type": "EndNode",
-          "id": "sender-end",
-          "name": "End",
-          "outputs": [
-            {
-              "title": "sendResult",
-              "type": "object"
-            },
-            {
-              "title": "userResponse",
-              "type": "string"
-            }
-          ]
-        },
         "sender-approval_gate": {
           "component_type": "InputMessageNode",
           "id": "sender-approval_gate",
@@ -2183,6 +2211,94 @@
             },
             {
               "title": "senderEmail",
+              "type": "string",
+              "default": ""
+            }
+          ]
+        },
+        "sender-send": {
+          "component_type": "ApiNode",
+          "id": "sender-send",
+          "name": "Send campaign emails",
+          "url": "{{CINATRA_BASE_URL}}/api/llm-bridge",
+          "http_method": "POST",
+          "data": {
+            "agent_id": "email-delivery",
+            "system": "You are an email campaign sender agent. Fetch the confirmed recipients via objects_get(confirmedRecipientsRef) and the approved draft bundle via objects_get(approvedDraftBundleRef). You safely launch an approved outreach campaign and enforce an explicit human approval boundary before any real send. Record the send against campaignId. Return a structured result covering approval status, send status, and any operational issues. If objects_get returns null or wrong typeHint for any ref, set sendResult to an error object and do NOT send any email.",
+            "user": "Execute the email sending task now and return the result as JSON.\nInputs:\n- confirmedRecipientsRef: {{ confirmedRecipientsRef }}\n- approvedDraftBundleRef: {{ approvedDraftBundleRef }}\n- senderEmail: {{ senderEmail }}\n- campaignId: {{ campaignId }}",
+            "agent_run_id": "{{ agent_run_id }}"
+          },
+          "inputs": [
+            {
+              "title": "campaignId",
+              "type": "string",
+              "default": "",
+              "json_schema": {
+                "format": "uuid"
+              }
+            },
+            {
+              "title": "approvedDraftBundleRef",
+              "type": "string",
+              "default": "",
+              "json_schema": {
+                "format": "uuid"
+              }
+            },
+            {
+              "title": "confirmedRecipientsRef",
+              "type": "string",
+              "default": ""
+            },
+            {
+              "title": "senderEmail",
+              "type": "string",
+              "default": ""
+            },
+            {
+              "title": "agent_run_id",
+              "type": "string",
+              "default": ""
+            }
+          ],
+          "outputs": [
+            {
+              "title": "sendResult",
+              "type": "object",
+              "json_schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          ],
+          "metadata": {
+            "cinatra": {
+              "riskClass": "email_send",
+              "requiresApproval": true,
+              "renderer": "@cinatra-ai/email-delivery-agent:output",
+              "a2uiSurfaceId": "email-delivery:step-1:output"
+            }
+          }
+        },
+        "sender-end": {
+          "component_type": "EndNode",
+          "id": "sender-end",
+          "name": "End",
+          "outputs": [
+            {
+              "title": "sendResult",
+              "type": "object",
+              "default": {}
+            },
+            {
+              "title": "userResponse",
               "type": "string",
               "default": ""
             }

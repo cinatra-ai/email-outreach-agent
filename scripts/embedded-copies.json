@@ -1,0 +1,363 @@
+[
+  {
+    "copyId": "email-recipient-selection-subflow",
+    "prefix": "recipients-",
+    "package": "@cinatra-ai/email-recipient-selection-agent",
+    "repository": "cinatra-ai/email-recipient-selection-agent",
+    "commit": "cc23c0463df66757ddb70759b778591004dfcd03",
+    "snapshot": "scripts/children/email-recipient-selection-agent.oas.json",
+    "blob": "4fc16b0f6713824ef766cb14e13d78f145ea2934",
+    "declared": [
+      {
+        "child": "cinatra-ai/email-recipient-selection-agent",
+        "kind": "omit-flow-key",
+        "key": "description",
+        "reason": "The child's own package description; the parent declares the run's screens and package once."
+      },
+      {
+        "child": "cinatra-ai/email-recipient-selection-agent",
+        "kind": "omit-flow-key",
+        "key": "metadata",
+        "reason": "The child's own package metadata; the parent declares the run's screens and package once."
+      },
+      {
+        "child": "cinatra-ai/email-recipient-selection-agent",
+        "kind": "rename-step",
+        "step": "approval_gate",
+        "to": "review_gate",
+        "reason": "The outreach's pause id, which its tests and its recorded runs key on."
+      },
+      {
+        "child": "cinatra-ai/email-recipient-selection-agent",
+        "kind": "omit-step",
+        "step": "apply",
+        "reason": "The child's own write-back of the review decision; the outreach applies nothing inside this step."
+      },
+      {
+        "child": "cinatra-ai/email-recipient-selection-agent",
+        "kind": "omit-step",
+        "step": "selection_summary",
+        "reason": "The child's closing sentence; the outreach ends once, in its campaign summary."
+      },
+      {
+        "child": "cinatra-ai/email-recipient-selection-agent",
+        "kind": "omit-output",
+        "step": "end",
+        "output": "confirmedRecipients",
+        "reason": "Written only by the apply step, which this list leaves out."
+      },
+      {
+        "child": "cinatra-ai/email-recipient-selection-agent",
+        "kind": "control-edge",
+        "from": "review_gate",
+        "to": "end",
+        "reason": "Joins the review to the end, where the child runs its apply step and its closing sentence."
+      },
+      {
+        "child": "cinatra-ai/email-recipient-selection-agent",
+        "kind": "data-edge",
+        "from": "generate",
+        "output": "recipientCount",
+        "to": "end",
+        "input": "recipientCount",
+        "reason": "The outreach hands on the generated count, which its campaign ending and its end read; the child hands on the applied count of the apply step this list leaves out."
+      },
+      {
+        "child": "cinatra-ai/email-recipient-selection-agent",
+        "kind": "omit-text",
+        "step": "generate",
+        "path": "data.system",
+        "text": "\n\nRecipient limit, checked after Step 4 and before Step 5: the resolved recipient pool MUST NOT exceed the agent's cinatra.json.limits.maxRecipients (default 200). With several ticked lists the limit applies to their total: the unioned, filtered rows of Step 4, each contact counted once. If the count exceeds the cap, return an error JSON before objects_save: {\"error\":\"The ticked lists have N contacts which exceeds the maxRecipients limit of M. Pick fewer or smaller lists or override maxRecipients via the agent install settings.\"}. Do NOT silently truncate \u2014 fail/block, not truncate.",
+        "reason": "The child's own manifest limit on recipients, which the outreach does not declare."
+      },
+      {
+        "child": "cinatra-ai/email-recipient-selection-agent",
+        "kind": "omit-key",
+        "step": "review_gate",
+        "path": "metadata.cinatra.surfaceGateInputs",
+        "reason": "The outreach's review keeps what it shows today."
+      },
+      {
+        "child": "cinatra-ai/email-recipient-selection-agent",
+        "kind": "omit-key",
+        "step": "scope_gate",
+        "path": "metadata.cinatra.riskClass",
+        "reason": "The outreach's account scope pause keeps what it shows today."
+      },
+      {
+        "child": "cinatra-ai/email-recipient-selection-agent",
+        "kind": "omit-key",
+        "step": "scope_gate",
+        "path": "metadata.cinatra.requiresApproval",
+        "reason": "The outreach's account scope pause keeps what it shows today."
+      },
+      {
+        "child": "cinatra-ai/email-recipient-selection-agent",
+        "kind": "omit-key",
+        "step": "scope_gate",
+        "path": "metadata.cinatra.renderer",
+        "reason": "The outreach's account scope pause keeps what it shows today."
+      },
+      {
+        "child": "cinatra-ai/email-recipient-selection-agent",
+        "kind": "omit-key",
+        "step": "scope_gate",
+        "path": "metadata.cinatra.a2uiSurfaceId",
+        "reason": "The outreach's account scope pause keeps what it shows today."
+      },
+      {
+        "child": "cinatra-ai/email-recipient-selection-agent",
+        "kind": "omit-key",
+        "step": "generate",
+        "path": "data.cinatra_llm",
+        "reason": "The outreach's steps keep the model preference they have today."
+      }
+    ]
+  },
+  {
+    "copyId": "email-drafting-subflow",
+    "prefix": "drafts-",
+    "package": "@cinatra-ai/email-drafting-agent",
+    "repository": "cinatra-ai/email-drafting-agent",
+    "commit": "faf05c2afee7e78412978f2e646e2c3273c48837",
+    "snapshot": "scripts/children/email-drafting-agent.oas.json",
+    "blob": "86ff89619c6c66c6c1ca2b35a3f23763c9097e92",
+    "declared": [
+      {
+        "child": "cinatra-ai/email-drafting-agent",
+        "kind": "omit-flow-key",
+        "key": "description",
+        "reason": "The child's own package description; the parent declares the run's screens and package once."
+      },
+      {
+        "child": "cinatra-ai/email-drafting-agent",
+        "kind": "omit-flow-key",
+        "key": "metadata",
+        "reason": "It carries the child's own produces declaration; the parent's manifest declares the run's."
+      },
+      {
+        "child": "cinatra-ai/email-drafting-agent",
+        "kind": "omit-step",
+        "step": "apply",
+        "reason": "The child's own write-back of the review decision; the outreach applies nothing inside this step."
+      },
+      {
+        "child": "cinatra-ai/email-drafting-agent",
+        "kind": "omit-step",
+        "step": "drafting_summary",
+        "reason": "The child's closing sentence; the outreach ends once, in its campaign summary."
+      },
+      {
+        "child": "cinatra-ai/email-drafting-agent",
+        "kind": "omit-output",
+        "step": "end",
+        "output": "draftBundle",
+        "reason": "Written only by the apply step, which this list leaves out."
+      },
+      {
+        "child": "cinatra-ai/email-drafting-agent",
+        "kind": "omit-output",
+        "step": "end",
+        "output": "draftBundleDocument",
+        "reason": "Written only by the apply step, which this list leaves out."
+      },
+      {
+        "child": "cinatra-ai/email-drafting-agent",
+        "kind": "control-edge",
+        "from": "approval_gate",
+        "to": "end",
+        "reason": "Joins the review to the end, where the child runs its apply step and its closing sentence."
+      },
+      {
+        "child": "cinatra-ai/email-drafting-agent",
+        "kind": "omit-key",
+        "step": "approval_gate",
+        "path": "metadata.cinatra.surfaceGateInputs",
+        "reason": "The outreach's review keeps what it shows today."
+      },
+      {
+        "child": "cinatra-ai/email-drafting-agent",
+        "kind": "omit-key",
+        "step": "draft",
+        "path": "data.cinatra_llm",
+        "reason": "The outreach's steps keep the model preference they have today."
+      },
+      {
+        "child": "cinatra-ai/email-drafting-agent",
+        "kind": "omit-text",
+        "step": "draft",
+        "path": "data.system",
+        "text": "\"draftBundleTitle\":\"<short title, e.g. Email draft bundle (N recipients)>\",",
+        "reason": "The outreach's drafting step keeps its instructions and its result as they are today, so its output screen shows what it shows today."
+      },
+      {
+        "child": "cinatra-ai/email-drafting-agent",
+        "kind": "omit-text",
+        "step": "draft",
+        "path": "data.user",
+        "text": "\n- campaignId: {{ campaignId }}",
+        "reason": "The outreach's drafting step keeps its instructions and its result as they are today, so its output screen shows what it shows today."
+      },
+      {
+        "child": "cinatra-ai/email-drafting-agent",
+        "kind": "omit-input",
+        "step": "draft",
+        "input": "campaignId",
+        "reason": "The outreach's drafting step keeps its instructions and its result as they are today, so its output screen shows what it shows today."
+      },
+      {
+        "child": "cinatra-ai/email-drafting-agent",
+        "kind": "omit-output",
+        "step": "draft",
+        "output": "draftBundleTitle",
+        "reason": "The outreach's drafting step keeps its instructions and its result as they are today, so its output screen shows what it shows today."
+      },
+      {
+        "child": "cinatra-ai/email-drafting-agent",
+        "kind": "omit-output",
+        "step": "end",
+        "output": "draftBundleTitle",
+        "reason": "The outreach's drafting step keeps its instructions and its result as they are today, so its output screen shows what it shows today."
+      }
+    ]
+  },
+  {
+    "copyId": "email-delivery-subflow",
+    "prefix": "sender-",
+    "package": "@cinatra-ai/email-delivery-agent",
+    "repository": "cinatra-ai/email-delivery-agent",
+    "commit": "8bcda3e0cca0fc56667c116bfade3a64121dd6b1",
+    "snapshot": "scripts/children/email-delivery-agent.oas.json",
+    "blob": "e8de7a7ea0ffa295e82717dbfa3a743721c26fda",
+    "declared": [
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "omit-flow-key",
+        "key": "description",
+        "reason": "The child's own package description; the parent declares the run's screens and package once."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "omit-flow-key",
+        "key": "metadata",
+        "reason": "The child's own package metadata; the parent declares the run's screens and package once."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "omit-step",
+        "step": "prepare",
+        "reason": "The child's own read-only pre-send summary; the outreach's confirmation shows the campaign and the mailbox only."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "omit-step",
+        "step": "delivery_summary",
+        "reason": "The child's closing sentence; the outreach ends once, in its campaign summary."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "omit-input",
+        "step": "approval_gate",
+        "input": "summary",
+        "reason": "Fed only by the prepare step, which this list leaves out."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "omit-key",
+        "step": "approval_gate",
+        "path": "metadata.cinatra.surfaceGateInputs",
+        "reason": "The outreach's confirmation keeps what it shows today."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "control-edge",
+        "from": "start",
+        "to": "approval_gate",
+        "reason": "Joins the steps that the prepare and closing-sentence entries leave out."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "control-edge",
+        "from": "send",
+        "to": "end",
+        "reason": "Joins the steps that the prepare and closing-sentence entries leave out."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "copy-value",
+        "step": "send",
+        "path": "metadata.cinatra.requiresApproval",
+        "value": true,
+        "reason": "The outreach's send is gated by its own approval flag; the child's is false because its confirmation stands before it."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "copy-value",
+        "step": "send",
+        "path": "data.system",
+        "value": "You are an email campaign sender agent. Fetch the confirmed recipients via objects_get(confirmedRecipientsRef) and the approved draft bundle via objects_get(approvedDraftBundleRef). You safely launch an approved outreach campaign and enforce an explicit human approval boundary before any real send. Record the send against campaignId. Return a structured result covering approval status, send status, and any operational issues. If objects_get returns null or wrong typeHint for any ref, set sendResult to an error object and do NOT send any email.",
+        "reason": "The child's send step is written for the child's own prepare-and-confirm road and returns a seven-member result; the outreach's send keeps its instructions and its result, which its campaign ending reads."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "copy-value",
+        "step": "send",
+        "path": "data.user",
+        "value": "Execute the email sending task now and return the result as JSON.\nInputs:\n- confirmedRecipientsRef: {{ confirmedRecipientsRef }}\n- approvedDraftBundleRef: {{ approvedDraftBundleRef }}\n- senderEmail: {{ senderEmail }}\n- campaignId: {{ campaignId }}",
+        "reason": "The child's send step is written for the child's own prepare-and-confirm road and returns a seven-member result; the outreach's send keeps its instructions and its result, which its campaign ending reads."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "omit-key",
+        "step": "send",
+        "path": "data.cinatra_llm",
+        "reason": "The outreach's steps keep the model preference they have today."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "omit-key",
+        "step": "send",
+        "path": "data.max_steps",
+        "reason": "The child's send step is written for the child's own prepare-and-confirm road and returns a seven-member result; the outreach's send keeps its instructions and its result, which its campaign ending reads."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "omit-key",
+        "step": "send",
+        "path": "metadata.cinatra.description",
+        "reason": "The child's send step is written for the child's own prepare-and-confirm road and returns a seven-member result; the outreach's send keeps its instructions and its result, which its campaign ending reads."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "omit-key",
+        "step": "send",
+        "path": "metadata.cinatra.packageName",
+        "reason": "The child's send step is written for the child's own prepare-and-confirm road and returns a seven-member result; the outreach's send keeps its instructions and its result, which its campaign ending reads."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "copy-value",
+        "step": "send",
+        "path": "outputs",
+        "value": [
+          {
+            "title": "sendResult",
+            "type": "object",
+            "json_schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ],
+        "reason": "The child's send step is written for the child's own prepare-and-confirm road and returns a seven-member result; the outreach's send keeps its instructions and its result, which its campaign ending reads."
+      }
+    ]
+  }
+]

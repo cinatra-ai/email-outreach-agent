@@ -18,3 +18,4 @@ import "./lifecycle-d-w8-flow.test.mjs";
 import "./oas-bridge-output-declarations.test.mjs";
 import "./wayflow-mount-contract.test.mjs";
 import "./account-scope-words.test.mjs";
+import "./embedded-copy-parity.test.mjs";
