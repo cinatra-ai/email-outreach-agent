@@ -80,6 +80,9 @@
       "$component_ref": "approval_gate"
     },
     {
+      "$component_ref": "file_recipients"
+    },
+    {
       "$component_ref": "send"
     },
     {
@@ -112,9 +115,19 @@
     },
     {
       "component_type": "ControlFlowEdge",
-      "name": "approval_gate_to_send",
+      "name": "approval_gate_to_file_recipients",
       "from_node": {
         "$component_ref": "approval_gate"
+      },
+      "to_node": {
+        "$component_ref": "file_recipients"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "file_recipients_to_send",
+      "from_node": {
+        "$component_ref": "file_recipients"
       },
       "to_node": {
         "$component_ref": "send"
@@ -321,6 +334,42 @@
         "$component_ref": "delivery_summary"
       },
       "destination_input": "sendResult"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_agent_run_id_to_file_recipients",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "agent_run_id",
+      "destination_node": {
+        "$component_ref": "file_recipients"
+      },
+      "destination_input": "agent_run_id"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_confirmedRecipientsRef_to_file_recipients",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "confirmedRecipientsRef",
+      "destination_node": {
+        "$component_ref": "file_recipients"
+      },
+      "destination_input": "confirmedRecipientsRef"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_campaignId_to_file_recipients",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "campaignId",
+      "destination_node": {
+        "$component_ref": "file_recipients"
+      },
+      "destination_input": "campaignId"
     }
   ],
   "$referenced_components": {
@@ -453,6 +502,66 @@
           "requiresApproval": false,
           "packageName": "@cinatra-ai/email-delivery-agent",
           "description": "Read-only pre-send summarizer. Reads approvedDraftBundleRef + confirmedRecipientsRef (and optionally the campaign record) via the injected Cinatra self-MCP objects_get and returns { summary: { recipientCount, draftCount, scheduledAt } } computed from the REAL loaded records. metadata.cinatra.toolboxes is INTENTIONALLY OMITTED so the default always-inject path reaches objects_get. This node performs NO write — it only produces the summary the confirmation gate surfaces to the operator."
+        }
+      }
+    },
+    "file_recipients": {
+      "component_type": "ApiNode",
+      "id": "file_recipients",
+      "name": "File one record per confirmed recipient",
+      "url": "{{CINATRA_BASE_URL}}/api/agents/passthrough",
+      "http_method": "POST",
+      "data": {
+        "tool": "extension_tool",
+        "input": {
+          "name": "recipient_records",
+          "input": {
+            "recipientsRef": "{{ confirmedRecipientsRef }}",
+            "campaignId": "{{ campaignId }}"
+          }
+        },
+        "agent_run_id": "{{ agent_run_id }}"
+      },
+      "inputs": [
+        {
+          "title": "agent_run_id",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "confirmedRecipientsRef",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "campaignId",
+          "type": "string",
+          "default": ""
+        }
+      ],
+      "outputs": [
+        {
+          "title": "filed",
+          "type": "integer",
+          "default": 0
+        },
+        {
+          "title": "skipped",
+          "type": "integer",
+          "default": 0
+        },
+        {
+          "title": "ok",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "metadata": {
+        "cinatra": {
+          "riskClass": "write",
+          "requiresApproval": false,
+          "packageName": "@cinatra-ai/email-delivery-agent",
+          "description": "The agent files one recipient record per confirmed recipient of this run, keyed by the run and the contact, with the address only where one exists, after the operator has confirmed the send and before any email is sent. A record that is refused ends the run before the send."
         }
       }
     },
