@@ -1,6 +1,6 @@
 {
   "name": "@cinatra-ai/email-outreach-agent",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "license": "Apache-2.0",
   "files": [
     "cinatra"
@@ -75,6 +75,12 @@
     "riskLevel": "low",
     "hasApprovalGates": true,
     "toolAccess": [],
+    "tools": [
+      {
+        "name": "recipient_records",
+        "module": "./cinatra/tools/recipient-records.mjs"
+      }
+    ],
     "ownerOrgId": null,
     "fieldRenderers": [
       {

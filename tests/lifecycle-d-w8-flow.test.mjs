@@ -209,7 +209,8 @@ test("(3) both reviews apply the three decisions", () => {
 
 test("(4) the confirmation stands before the send, not after it", () => {
   assert.ok(hasEdge(deliveryFlow, "sender-start", "sender-approval_gate"), "the run does not reach the confirmation first");
-  assert.ok(hasEdge(deliveryFlow, "sender-approval_gate", "sender-send"), "the confirmation does not gate the send");
+  assert.ok(hasEdge(deliveryFlow, "sender-approval_gate", "sender-file_recipients"), "the confirmation does not gate the send");
+  assert.ok(hasEdge(deliveryFlow, "sender-file_recipients", "sender-send"), "the send does not follow the recipient filing");
   assert.ok(hasEdge(deliveryFlow, "sender-send", "sender-end"));
   assert.ok(!hasEdge(deliveryFlow, "sender-send", "sender-approval_gate"), "the confirmation still stands after the send");
 });
