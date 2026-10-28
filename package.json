@@ -103,6 +103,12 @@
         "id": "@cinatra-ai/email-outreach-agent:cta",
         "kind": "cta",
         "priority": 90
+      },
+      {
+        "id": "@cinatra-ai/email-outreach-agent:campaign-recipients-review",
+        "kind": "campaign-recipients-review",
+        "priority": 70,
+        "midRunHitl": true
       }
     ],
     "consumes": []

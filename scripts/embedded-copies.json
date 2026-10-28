@@ -30,12 +30,6 @@
       {
         "child": "cinatra-ai/email-recipient-selection-agent",
         "kind": "omit-step",
-        "step": "apply",
-        "reason": "The child's own write-back of the review decision; the outreach applies nothing inside this step."
-      },
-      {
-        "child": "cinatra-ai/email-recipient-selection-agent",
-        "kind": "omit-step",
         "step": "selection_summary",
         "reason": "The child's closing sentence; the outreach ends once, in its campaign summary."
       },
@@ -44,23 +38,14 @@
         "kind": "omit-output",
         "step": "end",
         "output": "confirmedRecipients",
-        "reason": "Written only by the apply step, which this list leaves out."
+        "reason": "The outreach hands its drafting and delivery the recipients object by its reference, which the apply step updates in place; nothing in the outreach reads the list itself."
       },
       {
         "child": "cinatra-ai/email-recipient-selection-agent",
         "kind": "control-edge",
-        "from": "review_gate",
+        "from": "apply",
         "to": "end",
-        "reason": "Joins the review to the end, where the child runs its apply step and its closing sentence."
-      },
-      {
-        "child": "cinatra-ai/email-recipient-selection-agent",
-        "kind": "data-edge",
-        "from": "generate",
-        "output": "recipientCount",
-        "to": "end",
-        "input": "recipientCount",
-        "reason": "The outreach hands on the generated count, which its campaign ending and its end read; the child hands on the applied count of the apply step this list leaves out."
+        "reason": "Joins the apply step to the end, where the child runs its closing sentence."
       },
       {
         "child": "cinatra-ai/email-recipient-selection-agent",
