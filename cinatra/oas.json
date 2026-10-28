@@ -794,6 +794,9 @@
           "$component_ref": "recipients-review_gate"
         },
         {
+          "$component_ref": "recipients-apply"
+        },
+        {
           "$component_ref": "recipients-end"
         }
       ],
@@ -830,9 +833,19 @@
         },
         {
           "component_type": "ControlFlowEdge",
-          "name": "recipients-review_gate_to_end",
+          "name": "recipients-review_gate_to_apply",
           "from_node": {
             "$component_ref": "recipients-review_gate"
+          },
+          "to_node": {
+            "$component_ref": "recipients-apply"
+          }
+        },
+        {
+          "component_type": "ControlFlowEdge",
+          "name": "recipients-apply_to_end",
+          "from_node": {
+            "$component_ref": "recipients-apply"
           },
           "to_node": {
             "$component_ref": "recipients-end"
@@ -878,6 +891,18 @@
         },
         {
           "component_type": "DataFlowEdge",
+          "name": "recipients-apply_to_end_recipientCount",
+          "source_node": {
+            "$component_ref": "recipients-apply"
+          },
+          "source_output": "reviewedCount",
+          "destination_node": {
+            "$component_ref": "recipients-end"
+          },
+          "destination_input": "recipientCount"
+        },
+        {
+          "component_type": "DataFlowEdge",
           "name": "recipients-review_gate_to_end_userResponse",
           "source_node": {
             "$component_ref": "recipients-review_gate"
@@ -902,6 +927,30 @@
         },
         {
           "component_type": "DataFlowEdge",
+          "name": "recipients-review_gate_to_apply_resumePayload",
+          "source_node": {
+            "$component_ref": "recipients-review_gate"
+          },
+          "source_output": "userResponse",
+          "destination_node": {
+            "$component_ref": "recipients-apply"
+          },
+          "destination_input": "resumePayload"
+        },
+        {
+          "component_type": "DataFlowEdge",
+          "name": "recipients-start_to_apply_agent_run_id",
+          "source_node": {
+            "$component_ref": "recipients-start"
+          },
+          "source_output": "agent_run_id",
+          "destination_node": {
+            "$component_ref": "recipients-apply"
+          },
+          "destination_input": "agent_run_id"
+        },
+        {
+          "component_type": "DataFlowEdge",
           "name": "recipients-generate_to_end_confirmedRecipientsRef",
           "source_node": {
             "$component_ref": "recipients-generate"
@@ -921,18 +970,6 @@
           "source_output": "recipientCount",
           "destination_node": {
             "$component_ref": "recipients-review_gate"
-          },
-          "destination_input": "recipientCount"
-        },
-        {
-          "component_type": "DataFlowEdge",
-          "name": "recipients-generate_to_end_recipientCount",
-          "source_node": {
-            "$component_ref": "recipients-generate"
-          },
-          "source_output": "recipientCount",
-          "destination_node": {
-            "$component_ref": "recipients-end"
           },
           "destination_input": "recipientCount"
         }
@@ -1156,6 +1193,45 @@
               "type": "integer"
             }
           ]
+        },
+        "recipients-apply": {
+          "component_type": "ApiNode",
+          "id": "recipients-apply",
+          "name": "Persist reviewed recipients",
+          "url": "{{CINATRA_BASE_URL}}/api/agents/passthrough",
+          "http_method": "POST",
+          "data": {
+            "tool": "email_outreach_recipients_update",
+            "input": {
+              "resumePayloadJson": "{{ resumePayload }}"
+            },
+            "agent_run_id": "{{ agent_run_id }}"
+          },
+          "outputs": [
+            {
+              "title": "ok",
+              "type": "boolean"
+            },
+            {
+              "title": "reviewedRecipients",
+              "type": "array",
+              "json_schema": {
+                "items": {
+                  "type": "object"
+                }
+              }
+            },
+            {
+              "title": "reviewedCount",
+              "type": "integer"
+            }
+          ],
+          "metadata": {
+            "cinatra": {
+              "riskClass": "recipients_update",
+              "requiresApproval": false
+            }
+          }
         }
       }
     },
