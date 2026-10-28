@@ -1137,7 +1137,8 @@
                   "decision"
                 ]
               },
-              "description": "Review the recipients this campaign will write to, then approve, send back for revision, or reject."
+              "description": "Review the recipients this campaign will write to, then approve, send back for revision, or reject.",
+              "surfaceGateInputs": true
             }
           },
           "inputs": [
@@ -1761,7 +1762,8 @@
                 "required": [
                   "decision"
                 ]
-              }
+              },
+              "surfaceGateInputs": true
             }
           },
           "outputs": [
@@ -2270,6 +2272,7 @@
             "cinatra": {
               "riskClass": "approval",
               "requiresApproval": true,
+              "surfaceGateInputs": true,
               "renderer": "@cinatra-ai/email-delivery-agent:send-confirmation",
               "a2uiSurfaceId": "email-delivery:send-confirmation:input",
               "autoSkipWhenInputsPresent": false,
