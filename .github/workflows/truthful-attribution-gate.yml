@@ -5,8 +5,8 @@ name: truthful-attribution-gate
 # it never fails a PR. .github/gate-suite.json names this engine in its
 # truthful-attribution-gate entry (workflow + pinned): move that pin, the `uses:`
 # pin and the `ref:` input below together, in one commit.
-# Pinned to the immutable engine SHA 641255c8, ci `main` HEAD when the manifest
-# content rule landed, ahead of the latest release tag — so
+# Pinned to the immutable engine SHA 7c767fe7, the ci `main` commit that
+# recognizes revision 3 of the standing merge grant, ahead of the latest release tag — so
 # the trailing version comment on the `uses:` line is an honest main-branch
 # prerelease marker derived from that SHA (a `0.0.0-main.<sha>` form, NOT a real
 # release tag — claiming one would be false metadata). It is only there to
@@ -21,7 +21,7 @@ permissions:
   contents: read
   pull-requests: read
   checks: read
-  # actions:read is MANDATORY: the engine at 641255c8 resolves a reusable-workflow
+  # actions:read is MANDATORY: the engine at 7c767fe7 resolves a reusable-workflow
   # check-run to its Actions run (GET /actions/runs/{id}) to verify referenced_workflows[]
   # at the pinned SHA. With an explicit permissions block, any omitted scope defaults
   # to `none`, and a called reusable workflow cannot exceed the caller's grant — so
@@ -31,7 +31,7 @@ permissions:
 
 jobs:
   truthful-attribution-gate:                 # caller job id MUST stay this exact string
-    uses: cinatra-ai/ci/.github/workflows/truthful-attribution-gate.yml@641255c87fd063dd4c2d4d6ff1c785ba77bf2a5c # v0.0.0-main.641255c8
+    uses: cinatra-ai/ci/.github/workflows/truthful-attribution-gate.yml@7c767fe7fabc5e4fb93e2142987a2b2dff502014 # v0.0.0-main.7c767fe7
     with:
       mode: warn
-      ref: 641255c87fd063dd4c2d4d6ff1c785ba77bf2a5c
+      ref: 7c767fe7fabc5e4fb93e2142987a2b2dff502014
