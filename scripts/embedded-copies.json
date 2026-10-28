@@ -73,13 +73,6 @@
       {
         "child": "cinatra-ai/email-recipient-selection-agent",
         "kind": "omit-key",
-        "step": "review_gate",
-        "path": "metadata.cinatra.surfaceGateInputs",
-        "reason": "The outreach's review keeps what it shows today."
-      },
-      {
-        "child": "cinatra-ai/email-recipient-selection-agent",
-        "kind": "omit-key",
         "step": "scope_gate",
         "path": "metadata.cinatra.riskClass",
         "reason": "The outreach's account scope pause keeps what it shows today."
@@ -171,13 +164,6 @@
       {
         "child": "cinatra-ai/email-drafting-agent",
         "kind": "omit-key",
-        "step": "approval_gate",
-        "path": "metadata.cinatra.surfaceGateInputs",
-        "reason": "The outreach's review keeps what it shows today."
-      },
-      {
-        "child": "cinatra-ai/email-drafting-agent",
-        "kind": "omit-key",
         "step": "draft",
         "path": "data.cinatra_llm",
         "reason": "The outreach's steps keep the model preference they have today."
@@ -260,13 +246,6 @@
         "step": "approval_gate",
         "input": "summary",
         "reason": "Fed only by the prepare step, which this list leaves out."
-      },
-      {
-        "child": "cinatra-ai/email-delivery-agent",
-        "kind": "omit-key",
-        "step": "approval_gate",
-        "path": "metadata.cinatra.surfaceGateInputs",
-        "reason": "The outreach's confirmation keeps what it shows today."
       },
       {
         "child": "cinatra-ai/email-delivery-agent",

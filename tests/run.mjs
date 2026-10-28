@@ -20,3 +20,4 @@ import "./wayflow-mount-contract.test.mjs";
 import "./account-scope-words.test.mjs";
 import "./embedded-copy-parity.test.mjs";
 import "./recipient-filing.test.mjs";
+import "./review-gates-reach-their-screens.test.mjs";
