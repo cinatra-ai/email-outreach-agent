@@ -22,3 +22,4 @@ import "./embedded-copy-parity.test.mjs";
 import "./recipient-filing.test.mjs";
 import "./review-gates-reach-their-screens.test.mjs";
 import "./recipient-removals-are-applied.test.mjs";
+import "./drafts-review-reaches-its-screen.test.mjs";
