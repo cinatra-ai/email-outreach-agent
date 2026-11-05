@@ -231,9 +231,10 @@ test("the declared list does not take the surfacing flag off the send confirmati
 });
 
 // ---------------------------------------------------------------------------
-// The drafts review — the flag only. Its declared inputs (draftBodyArtifacts,
-// draftBundleRef) are not the names its screen reads, so it does not draw yet
-// even with the flag; that is a separate change.
+// The drafts review — the flag. Its references (draftBodyArtifacts,
+// draftBundleRef) are not what its screen reads; the read step before it hands
+// it the saved drafts as draftBundle, which
+// tests/drafts-review-reaches-its-screen.test.mjs holds.
 // ---------------------------------------------------------------------------
 
 test("the drafts review asks the loader to surface its inputs", () => {
