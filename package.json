@@ -113,6 +113,12 @@
         "kind": "campaign-recipients-review",
         "priority": 70,
         "midRunHitl": true
+      },
+      {
+        "id": "@cinatra-ai/email-outreach-agent:email-drafts-review",
+        "kind": "email-drafts-review",
+        "priority": 70,
+        "midRunHitl": true
       }
     ],
     "consumes": []

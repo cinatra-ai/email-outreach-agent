@@ -116,12 +116,6 @@
       {
         "child": "cinatra-ai/email-drafting-agent",
         "kind": "omit-step",
-        "step": "apply",
-        "reason": "The child's own write-back of the review decision; the outreach applies nothing inside this step."
-      },
-      {
-        "child": "cinatra-ai/email-drafting-agent",
-        "kind": "omit-step",
         "step": "drafting_summary",
         "reason": "The child's closing sentence; the outreach ends once, in its campaign summary."
       },
@@ -130,21 +124,21 @@
         "kind": "omit-output",
         "step": "end",
         "output": "draftBundle",
-        "reason": "Written only by the apply step, which this list leaves out."
+        "reason": "The outreach hands its delivery the drafts by the saved bundle's reference, which the apply step updates in place; nothing in the outreach reads the bundle itself."
       },
       {
         "child": "cinatra-ai/email-drafting-agent",
         "kind": "omit-output",
         "step": "end",
         "output": "draftBundleDocument",
-        "reason": "Written only by the apply step, which this list leaves out."
+        "reason": "The outreach's run keeps the artifacts it files today; its send reads the reviewed drafts from the saved bundle, which the apply step updates in place."
       },
       {
         "child": "cinatra-ai/email-drafting-agent",
         "kind": "control-edge",
-        "from": "approval_gate",
+        "from": "apply",
         "to": "end",
-        "reason": "Joins the review to the end, where the child runs its apply step and its closing sentence."
+        "reason": "Joins the apply step to the end, where the child runs its closing sentence."
       },
       {
         "child": "cinatra-ai/email-drafting-agent",
