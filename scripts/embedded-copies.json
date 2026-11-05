@@ -97,7 +97,7 @@
     "prefix": "drafts-",
     "package": "@cinatra-ai/email-drafting-agent",
     "repository": "cinatra-ai/email-drafting-agent",
-    "commit": "d42f08693e9866641693742331e367dd76b5ad82",
+    "commit": "ea32ebb4b08f182cf9768aea876b58a065dc334c",
     "snapshot": "scripts/children/email-drafting-agent.oas.json",
     "blob": "a195db00c134bd99d44ca78ceba5bd8a357d46e3",
     "declared": [

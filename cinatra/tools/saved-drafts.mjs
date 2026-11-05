@@ -30,7 +30,9 @@
 // no row, so it is refused, also when it names an email. The write-back
 // edits the first list among draftedEmails, sequence, followups, drafts and
 // confirmedRecipients that the bundle holds; a bundle where that list is not
-// the one shown here is refused.
+// the one shown here is refused. The write-back refuses an answer of more
+// than 2000 drafts, and the screen answers with every draft it shows, so a
+// bundle of more than 2000 drafts is refused before any draft is read.
 //
 // A missing reference, an object that is not a draft bundle, a bundle with no
 // drafts and a draft that names no recipient are refused by name too, so the
@@ -48,6 +50,8 @@ const TEXT_FIELDS = ["id", "recipientId", "recipientName", "recipientEmail", "su
 const KEY_FIELDS = ["id", "recipientId", "recipientEmail"];
 const WRITE_BACK_LISTS = ["draftedEmails", "sequence", "followups", "drafts", "confirmedRecipients"];
 const SHOWN_LISTS = ["draftedEmails", "drafts"];
+// The most drafts the write-back takes in one answer (DRAFTS_PERSIST_MAX_BATCH of the platform's persist).
+const WRITE_BACK_MAX_DRAFTS = 2000;
 
 class ExtensionToolCallRefusal extends Error {
   constructor(message) {
@@ -115,6 +119,11 @@ export async function extensionTool({ input, ports }) {
   if (rows === undefined) throw notABundle();
   if (rows.length === 0) {
     throw new ExtensionToolCallRefusal("The saved draft bundle of this run holds no drafts to review.");
+  }
+  if (rows.length > WRITE_BACK_MAX_DRAFTS) {
+    throw new ExtensionToolCallRefusal(
+      `The saved draft bundle of this run holds ${rows.length} drafts, more than the ${WRITE_BACK_MAX_DRAFTS} the drafts review can save back.`,
+    );
   }
 
   const draftedEmails = [];
