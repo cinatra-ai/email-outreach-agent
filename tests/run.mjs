@@ -23,3 +23,4 @@ import "./recipient-filing.test.mjs";
 import "./review-gates-reach-their-screens.test.mjs";
 import "./recipient-removals-are-applied.test.mjs";
 import "./drafts-review-reaches-its-screen.test.mjs";
+import "./drafts-review-edits-reach-the-send.test.mjs";
