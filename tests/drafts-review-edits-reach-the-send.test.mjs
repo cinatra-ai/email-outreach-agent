@@ -30,7 +30,8 @@
 //     packages/agents/src/mcp/drafts-persist-handler.ts at c55a2c6d): it admits
 //     only a run whose package is the id scope of an `email-drafts-review`
 //     binding with `midRunHitl`; it parses the answer verbatim from the step's
-//     input and needs its `drafts` array; it picks the run's latest draft-shaped
+//     input and needs its `drafts` array, of at most 2000 rows (the handler's
+//     DRAFTS_PERSIST_MAX_BATCH); it picks the run's latest draft-shaped
 //     object; it matches each reviewed row to one saved row by id, then by
 //     recipient email, and refuses an answer whose rows do not all match one to
 //     one; and it writes the reviewed subjects and bodies in place. A refusal
@@ -155,6 +156,7 @@ function render(template, inputs) {
 }
 
 const BUNDLE_ARRAY_KEYS = ["draftedEmails", "sequence", "followups", "drafts", "confirmedRecipients"];
+const DRAFTS_PERSIST_MAX_BATCH = 2000;
 const CAMPAIGN_BUNDLE_TYPES = new Set([BUNDLE_TYPE, "@cinatra-ai/campaigns:email-followup-bundle"]);
 
 function arrayKeyOf(o) {
@@ -225,6 +227,9 @@ function persist(store, node, inputs) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload) || !Array.isArray(payload.drafts)) {
     throw new PersistRefusal(`${PERSIST_TOOL}: resume payload \`drafts\` must be a present array`);
   }
+  if (payload.drafts.length > DRAFTS_PERSIST_MAX_BATCH) {
+    throw new PersistRefusal(`${PERSIST_TOOL}: Too many drafts (${payload.drafts.length}); the persist batch is bounded at ${DRAFTS_PERSIST_MAX_BATCH}.`);
+  }
   const edits = normalizeEdits(payload.drafts);
   const candidates = [...store.entries()]
     .filter(([, o]) => o.runId === RUN_ID)
@@ -280,8 +285,11 @@ function objectsPort(store) {
   };
 }
 
-/** Runs the drafting copy from its draft step; returns its end values. `answer` builds the review's answer from the review's inputs. */
-async function runDrafting(store, answer) {
+/**
+ * Runs the drafting copy from its draft step; returns its end values. `answer` builds the review's answer from the review's
+ * inputs; `saved` is the drafts the draft step saves.
+ */
+async function runDrafting(store, answer, saved = SAVED_DRAFTS) {
   const values = new Map(); // "<step>.<output>" -> value
   const start = refOf(FLOW.start_node);
   const startValues = { agent_run_id: RUN_ID, confirmedRecipientsRef: "recipients-1" };
@@ -308,11 +316,11 @@ async function runDrafting(store, answer) {
         runId: RUN_ID,
         type: BUNDLE_TYPE,
         createdAt: "2026-11-04T10:05:00.000Z",
-        data: { cinatra_agent_run_id: RUN_ID, drafts: SAVED_DRAFTS.map((d) => ({ ...d })) },
+        data: { cinatra_agent_run_id: RUN_ID, drafts: saved.map((d) => ({ ...d })) },
       });
       outputs = {
         draftBundleRef: BUNDLE_REF,
-        draftBodyArtifacts: SAVED_DRAFTS.map((_, i) => ({ artifactId: `artifact-${i + 1}`, representationRevisionId: `revision-${i + 1}` })),
+        draftBodyArtifacts: saved.map((_, i) => ({ artifactId: `artifact-${i + 1}`, representationRevisionId: `revision-${i + 1}` })),
       };
     } else if (node.component_type === "ApiNode" && node.data?.tool === "extension_tool") {
       const declared = (manifest.cinatra.tools ?? []).find((t) => t.name === node.data.input?.name);
@@ -402,6 +410,30 @@ test("an answer whose drafts do not all match the saved drafts stops the run bef
     "the run reaches the send with an answer the persist cannot write back",
   );
   assert.deepEqual(store.get(BUNDLE_REF).data.drafts, SAVED_DRAFTS, "a refused answer changed the saved drafts");
+});
+
+// The persist refuses an answer of more than 2000 rows, and the screen answers with every draft it shows. The read step
+// refuses a bundle of more drafts, so the run ends with its reason before the review instead of after it.
+test("a saved bundle of more drafts than the persist takes stops the run at the read step, before the review", async () => {
+  const many = (n) =>
+    Array.from({ length: n }, (_, i) => ({ recipientEmail: `r${i + 1}@example.com`, subject: `Idea ${i + 1}`, body: "Hello", status: "draft" }));
+  let reviewed = false;
+  await assert.rejects(
+    runDrafting(runStore(), (inputs) => {
+      reviewed = true;
+      return reviewAnswer(inputs, {});
+    }, many(2001)),
+    (error) => error?.name === "ExtensionToolCallRefusal" && / holds 2001 drafts, /.test(error.message),
+    "a bundle the persist cannot take reaches the review",
+  );
+  assert.equal(reviewed, false, "a bundle the persist cannot take reaches the review");
+  // 2000 drafts pass the read step, the review and the persist, and an edit reaches the send.
+  const store = runStore();
+  const edit = { "r2000@example.com": { subject: "Edited", body: "Rewritten" } };
+  const end = await runDrafting(store, (inputs) => reviewAnswer(inputs, edit), many(2000));
+  const mailed = draftsTheSendMails(store, end);
+  assert.equal(mailed.length, 2000);
+  assert.deepEqual(mailed[1999], { recipientEmail: "r2000@example.com", ...edit["r2000@example.com"] });
 });
 
 // ---------------------------------------------------------------------------

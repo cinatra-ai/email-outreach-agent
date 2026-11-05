@@ -2,9 +2,9 @@
 // through the objects port and hands its drafts to the drafts review under
 // draftBundle.draftedEmails; a missing reference, an object that is no draft
 // bundle, a bundle without drafts, a draft without a recipient or without
-// subject and body text, a draft whose id is empty or not text, and two
-// drafts the review cannot tell apart are refused by name -
-// cinatra-ai/cinatra#3089.
+// subject and body text, a draft whose id is empty or not text, two
+// drafts the review cannot tell apart, and a bundle of more drafts than the
+// write-back takes are refused by name - cinatra-ai/cinatra#3089.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -358,6 +358,19 @@ test("D25 a draft whose id is present but empty or not text is refused with its 
   // A null id is no id on either side: the draft is handed on under its recipientId, without the id.
   const answer = await readOf({ drafts: [{ id: null, recipientId: "r-1", ...text }] });
   assert.deepEqual(answer.draftBundle.draftedEmails, [{ recipientId: "r-1", ...text }]);
+});
+
+// The write-back refuses an answer of more than 2000 reviewed drafts (DRAFTS_PERSIST_MAX_BATCH of the platform's
+// drafts-persist-handler.ts), and the screen answers with every draft it shows. A bundle of more drafts would show a
+// review whose answer the write-back refuses, so the review could never complete.
+test("D26 a bundle of more drafts than the write-back takes (2000) is refused before the review", async () => {
+  const many = (n) => Array.from({ length: n }, (_, i) => ({ id: `d-${i + 1}`, subject: "", body: "" }));
+  await assert.rejects(readOf({ drafts: many(2001) }), refused(/^The saved draft bundle of this run holds 2001 drafts, more than the 2000 /));
+  await assert.rejects(readOf({ draftedEmails: many(2500) }), refused(/ holds 2500 drafts, /));
+  // Exactly 2000 drafts pass, each as saved.
+  const answer = await readOf({ drafts: many(2000) });
+  assert.equal(answer.draftBundle.draftedEmails.length, 2000);
+  assert.deepEqual(answer.draftBundle.draftedEmails[1999], { id: "d-2000", subject: "", body: "" });
 });
 
 test("D15 no other port is touched", () => {
