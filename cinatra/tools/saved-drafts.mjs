@@ -24,6 +24,10 @@
 // recipientId, else its recipient email, and the write-back matches the edits
 // by id and by recipient email, so two drafts under one such key, two drafts
 // with one recipient email, and the key __proto__ are refused. The write-back
+// keys a saved row by its id, else its recipientId, when that is non-empty
+// text, else by its email; a draft whose id is present (not null) but is
+// empty or not text could get an edit that the write-back drops or matches to
+// no row, so it is refused, also when it names an email. The write-back
 // edits the first list among draftedEmails, sequence, followups, drafts and
 // confirmedRecipients that the bundle holds; a bundle where that list is not
 // the one shown here is refused.
@@ -125,6 +129,12 @@ export async function extensionTool({ input, ports }) {
     if (!KEY_FIELDS.some((field) => nonEmpty(fields.get(field)))) {
       throw new ExtensionToolCallRefusal(
         `Draft ${position} of this run names no recipient, so the drafts review is not shown.`,
+      );
+    }
+    const id = fields.get("id");
+    if (id !== undefined && id !== null && (typeof id !== "string" || id.length === 0)) {
+      throw new ExtensionToolCallRefusal(
+        `Draft ${position} of this run has an id that is empty or not text, so the drafts review is not shown.`,
       );
     }
     if (typeof fields.get("subject") !== "string" || typeof fields.get("body") !== "string") {
