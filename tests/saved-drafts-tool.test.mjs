@@ -2,8 +2,9 @@
 // through the objects port and hands its drafts to the drafts review under
 // draftBundle.draftedEmails; a missing reference, an object that is no draft
 // bundle, a bundle without drafts, a draft without a recipient or without
-// subject and body text, and two drafts the review cannot tell apart are
-// refused by name - cinatra-ai/cinatra#3089.
+// subject and body text, a draft whose id is empty or not text, and two
+// drafts the review cannot tell apart are refused by name -
+// cinatra-ai/cinatra#3089.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -85,7 +86,7 @@ test("D3 each draft keeps only the fields the screen reads and the write-back ma
     recipientName: null,
     cinatra_agent_run_id: "run-1",
     internal: { score: 0.4 },
-    id: 7,
+    id: null,
   };
   const { ports } = makePorts({ saved: bundleOf({ drafts: [row] }) });
   const answer = await extensionTool({ input: { draftBundleRef: "bundle-1" }, ports });
@@ -295,7 +296,7 @@ test("D21 two drafts that the review would show under one id, or that name one r
     [{ id: "x@example.com", recipientEmail: "gil@example.com", ...text }, { recipientEmail: "x@example.com", ...text }],
     [{ id: "d-1", ...text }, { recipientId: "d-1", ...text }],
     [{ recipientEmail: "hal@example.com", ...text }, { id: "d-2", recipientEmail: "hal@example.com", ...text }],
-    [{ id: "", recipientEmail: "ivy@example.com", ...text }, { id: "", recipientEmail: "jon@example.com", ...text }],
+    [{ recipientId: "", recipientEmail: "ivy@example.com", ...text }, { recipientId: "", recipientEmail: "jon@example.com", ...text }],
   ];
   for (const drafts of cases) {
     await assert.rejects(readOf({ drafts }), refused(/^Drafts 1 and 2 of this run /));
@@ -334,6 +335,29 @@ test("D24 an unexpected failure of the read reaches the caller unchanged", async
   const failure = new TypeError("the store did not answer");
   const { ports } = makePorts({ readError: failure });
   await assert.rejects(extensionTool({ input: { draftBundleRef: "bundle-1" }, ports }), (e) => e === failure);
+});
+
+// The write-back keys a saved row by `id ?? recipientId` when that is non-empty text, else by its email; the screen keys the
+// handed draft by its id first. A draft whose id is present (not null) but empty or not text is keyed otherwise on the two
+// sides: without an email, its edit is dropped (an empty id) or matches no row (an id that is not text), and the write-back
+// answers 422. Such an id is refused also when the draft names an email that the write-back could match: one plain rule.
+test("D25 a draft whose id is present but empty or not text is refused with its position", async () => {
+  const text = { subject: "Idea eleven", body: "Hello" };
+  const cases = [
+    { id: "", recipientId: "r-1", ...text },
+    { id: 7, recipientId: "r-1", ...text },
+    { id: "", recipientEmail: "nia@example.com", ...text },
+    { id: 7, recipientEmail: "nia@example.com", ...text },
+    { id: false, recipientId: "r-1", ...text },
+    { id: { value: "d-1" }, recipientId: "r-1", ...text },
+    { id: ["d-1"], recipientEmail: "nia@example.com", ...text },
+  ];
+  for (const row of cases) {
+    await assert.rejects(readOf({ drafts: [DRAFTS[0], row] }), refused(/^Draft 2 of this run has an id that is empty or not text/));
+  }
+  // A null id is no id on either side: the draft is handed on under its recipientId, without the id.
+  const answer = await readOf({ drafts: [{ id: null, recipientId: "r-1", ...text }] });
+  assert.deepEqual(answer.draftBundle.draftedEmails, [{ recipientId: "r-1", ...text }]);
 });
 
 test("D15 no other port is touched", () => {
