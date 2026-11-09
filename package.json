@@ -79,6 +79,10 @@
       {
         "name": "recipient_records",
         "module": "./cinatra/tools/recipient-records.mjs"
+      },
+      {
+        "name": "saved_drafts",
+        "module": "./cinatra/tools/saved-drafts.mjs"
       }
     ],
     "ownerOrgId": null,
@@ -107,6 +111,12 @@
       {
         "id": "@cinatra-ai/email-outreach-agent:campaign-recipients-review",
         "kind": "campaign-recipients-review",
+        "priority": 70,
+        "midRunHitl": true
+      },
+      {
+        "id": "@cinatra-ai/email-outreach-agent:email-drafts-review",
+        "kind": "email-drafts-review",
         "priority": 70,
         "midRunHitl": true
       }

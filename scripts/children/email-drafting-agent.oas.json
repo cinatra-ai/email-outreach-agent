@@ -137,6 +137,9 @@
       "$component_ref": "draft"
     },
     {
+      "$component_ref": "read_drafts"
+    },
+    {
       "$component_ref": "approval_gate"
     },
     {
@@ -214,9 +217,19 @@
     },
     {
       "component_type": "ControlFlowEdge",
-      "name": "draft_to_approval_gate",
+      "name": "draft_to_read_drafts",
       "from_node": {
         "$component_ref": "draft"
+      },
+      "to_node": {
+        "$component_ref": "read_drafts"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "read_drafts_to_approval_gate",
+      "from_node": {
+        "$component_ref": "read_drafts"
       },
       "to_node": {
         "$component_ref": "approval_gate"
@@ -397,6 +410,42 @@
         "$component_ref": "approval_gate"
       },
       "destination_input": "draftBundleRef"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_to_read_drafts_agent_run_id",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "agent_run_id",
+      "destination_node": {
+        "$component_ref": "read_drafts"
+      },
+      "destination_input": "agent_run_id"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "draft_to_read_drafts_draftBundleRef",
+      "source_node": {
+        "$component_ref": "draft"
+      },
+      "source_output": "draftBundleRef",
+      "destination_node": {
+        "$component_ref": "read_drafts"
+      },
+      "destination_input": "draftBundleRef"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "read_drafts_to_approval_gate_draftBundle",
+      "source_node": {
+        "$component_ref": "read_drafts"
+      },
+      "source_output": "draftBundle",
+      "destination_node": {
+        "$component_ref": "approval_gate"
+      },
+      "destination_input": "draftBundle"
     },
     {
       "component_type": "DataFlowEdge",
@@ -683,6 +732,54 @@
         }
       ]
     },
+    "read_drafts": {
+      "component_type": "ApiNode",
+      "id": "read_drafts",
+      "name": "Read the saved drafts for the review",
+      "url": "{{CINATRA_BASE_URL}}/api/agents/passthrough",
+      "http_method": "POST",
+      "data": {
+        "tool": "extension_tool",
+        "input": {
+          "name": "saved_drafts",
+          "input": {
+            "draftBundleRef": "{{ draftBundleRef }}"
+          }
+        },
+        "agent_run_id": "{{ agent_run_id }}"
+      },
+      "inputs": [
+        {
+          "title": "agent_run_id",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "draftBundleRef",
+          "type": "string",
+          "default": ""
+        }
+      ],
+      "outputs": [
+        {
+          "title": "draftBundle",
+          "type": "object",
+          "default": {}
+        },
+        {
+          "title": "ok",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "metadata": {
+        "cinatra": {
+          "riskClass": "read_only",
+          "requiresApproval": false,
+          "description": "The agent reads the drafts this run saved and hands them to the drafts review, so the review shows the drafts that the approval and the send act on. A saved bundle that is missing, holds no drafts or has a draft without a recipient ends the run with its reason before the review."
+        }
+      }
+    },
     "drafting_summary": {
       "component_type": "OutputMessageNode",
       "id": "drafting_summary",
@@ -776,6 +873,11 @@
                 "title": "Draft bundle",
                 "readOnly": true
               },
+              "draftBundle": {
+                "type": "object",
+                "title": "Drafts",
+                "readOnly": true
+              },
               "decision": {
                 "type": "string",
                 "title": "Decision",
@@ -818,6 +920,11 @@
           "title": "draftBundleRef",
           "type": "string",
           "default": ""
+        },
+        {
+          "title": "draftBundle",
+          "type": "object",
+          "default": {}
         }
       ]
     },
