@@ -23,7 +23,9 @@
 // not text is refused. The screen keys each draft by its id, else its
 // recipientId, else its recipient email, and the write-back matches the edits
 // by id and by recipient email, so two drafts under one such key, two drafts
-// with one recipient email, and the key __proto__ are refused. The write-back
+// with one recipient email, and the key __proto__ are refused. An empty email
+// is no email to the write-back, so drafts for contacts without an email
+// address, each under its own recipientId, are not one recipient email. The write-back
 // keys a saved row by its id, else its recipientId, when that is non-empty
 // text, else by its email; a draft whose id is present (not null) but is
 // empty or not text could get an edit that the write-back drops or matches to
@@ -171,7 +173,8 @@ export async function extensionTool({ input, ports }) {
       );
     }
     byKey.set(key, position);
-    if (draft.recipientEmail !== undefined) {
+    // The write-back reads an empty email as no email: drafts for contacts without one are told apart by their key.
+    if (draft.recipientEmail !== undefined && draft.recipientEmail.length > 0) {
       if (byEmail.has(draft.recipientEmail)) {
         throw new ExtensionToolCallRefusal(
           `Drafts ${byEmail.get(draft.recipientEmail)} and ${position} of this run name one recipient email, so the drafts review is not shown.`,
