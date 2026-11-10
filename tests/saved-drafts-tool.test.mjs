@@ -386,3 +386,27 @@ test("D16 the module names no run or external key and imports nothing", () => {
   assert.ok(!/\bimport\s*\(/.test(source));
   assert.equal(extensionTool.length, 1);
 });
+
+// A confirmed recipient without an email address - cinatra-ai/email-drafting-agent#56. The draft step saves each draft
+// under its recipientId (the contact id), beside an email that is empty for such a contact. The write-back reads an
+// empty email as no email, so drafts with an empty email are not two drafts with one recipient email.
+test("D30 drafts for contacts without an email address are handed on under their recipientId", async () => {
+  const text = { subject: "Idea twelve", body: "Hello", status: "draft" };
+  const drafts = [
+    { recipientId: "c-1", recipientName: "Ada", recipientEmail: "ada@example.com", ...text },
+    { recipientId: "c-2", recipientName: "Ben", recipientEmail: "", ...text },
+    { recipientId: "c-3", recipientName: "Cy", recipientEmail: "", ...text },
+  ];
+  const answer = await readOf({ drafts });
+  assert.deepEqual(answer.draftBundle.draftedEmails, drafts);
+  // Without the recipientId, a draft with an empty email still names no recipient.
+  await assert.rejects(
+    readOf({ drafts: [drafts[0], { recipientName: "Ben", recipientEmail: "", ...text }] }),
+    refused(/^Draft 2 of this run names no recipient/),
+  );
+  // Two drafts under one recipientId are still refused, with or without an email.
+  await assert.rejects(
+    readOf({ drafts: [drafts[1], { ...drafts[2], recipientId: "c-2" }] }),
+    refused(/^Drafts 1 and 2 of this run /),
+  );
+});

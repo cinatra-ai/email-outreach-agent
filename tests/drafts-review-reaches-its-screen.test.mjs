@@ -368,7 +368,7 @@ test("the drafts review declares draftBundle as a read-only input and keeps surf
 });
 
 // The git blob of the drafting agent's module at the pinned drafting commit.
-const MODULE_BLOB = "adfd639db4c7658fcfdccf71449cad12f5488794";
+const MODULE_BLOB = "73685c4730236b33ba089a2d7ad0bca6bec3f398";
 
 test("the read step's tool is declared by this package and its module is published with the flow", async () => {
   const [step] = readSteps();
