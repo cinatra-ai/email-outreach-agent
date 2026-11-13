@@ -10,6 +10,20 @@
   "scripts": {
     "test": "node tests/run.mjs"
   },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "jsdom": "26.1.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  },
   "cinatra": {
     "apiVersion": "cinatra.ai/v1",
     "kind": "agent",
@@ -95,7 +109,12 @@
           "selection": "multiple",
           "minSelected": 1,
           "question": "Which views or lists in your CRM should this run take its recipients from?",
-          "emptyState": "There are no views or lists to pick from yet. Create one in your CRM, then open this step again."
+          "emptyState": "There are no views or lists in Twenty CRM to pick from yet. Create one in Twenty CRM.",
+          "refreshValue": "refresh"
+        },
+        "component": {
+          "entry": "./src/renderers/list-picker.ts",
+          "propsApiVersion": 1
         }
       },
       {
