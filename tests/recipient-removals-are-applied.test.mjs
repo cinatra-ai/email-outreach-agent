@@ -23,7 +23,11 @@
 //     `midRunHitl`, it parses the answer verbatim from the step's input and needs
 //     its removedRecipients array, and it removes exactly the rows whose contactId
 //     a removal names, in place, from the run's recipients object,
-//   - a stand-in for the generating step, which saves the recipients object.
+//   - a stand-in for the generating step, which saves the recipients object,
+//   - a stand-in for the list read before the account scope (one list), the
+//     step that hands it to the picker (no output), and the branch after the
+//     account scope, which follows the edge its mapping names for the answer
+//     (the scope here is no refresh value, so the default edge).
 // Then it follows `confirmedRecipientsRef` into the drafting and delivery
 // sub-flows and reads what each of their steps would read.
 // ---------------------------------------------------------------------------
@@ -138,6 +142,12 @@ function runRecipients(store, answer) {
       outputs = { userResponse: answer };
     } else if (node.component_type === "ApiNode" && node.data?.tool === PERSIST_TOOL) {
       outputs = persist(store, node, inputs);
+    } else if (node.component_type === "ApiNode" && id.endsWith("fetch_lists")) {
+      outputs = { lists: [{ id: "list-1", name: "List one" }], listsRead: "ok" };
+    } else if (node.component_type === "OutputMessageNode") {
+      outputs = {};
+    } else if (node.component_type === "BranchingNode") {
+      outputs = {};
     } else if (node.component_type === "ApiNode" && id.endsWith("generate")) {
       store.set("obj-recipients-1", { type: RECIPIENTS_TYPE, data: { confirmedRecipients: ROWS.map((r) => ({ ...r })) } });
       outputs = { confirmedRecipientsRef: "obj-recipients-1", recipientCount: ROWS.length, confirmedRecipients: ROWS };
@@ -147,7 +157,13 @@ function runRecipients(store, answer) {
       assert.fail(`step ${id} (${node.component_type}) is not modelled by this suite`);
     }
     for (const [k, v] of Object.entries(outputs)) values.set(`${id}.${k}`, v);
-    const next = flow.control_flow_connections.filter((e) => refOf(e.from_node) === id);
+    let next = flow.control_flow_connections.filter((e) => refOf(e.from_node) === id);
+    if (node.component_type === "BranchingNode") {
+      const [read] = node.inputs ?? [];
+      const answer = read ? inputs[read.title] : undefined;
+      const branch = (typeof answer === "string" && node.mapping?.[answer]) || "default";
+      next = next.filter((e) => (e.from_branch ?? "default") === branch);
+    }
     assert.equal(next.length, 1, `step ${id} has ${next.length} next steps`);
     id = refOf(next[0].to_node);
   }
@@ -250,8 +266,16 @@ test("the review's answer reaches the persist verbatim, as its provenance check 
 test("the screen's answer carries no decision, and the recipients road needs none", () => {
   assert.equal(Object.hasOwn(JSON.parse(reviewAnswer(["c-2"])), "decision"), false);
   const flow = refs["email-recipient-selection-subflow"];
-  const branching = Object.entries(flow.$referenced_components).filter(([, n]) => n.component_type === "BranchingNode");
-  assert.deepEqual(branching.map(([id]) => id), [], "a step of the recipients sub-flow branches on the answer");
+  const branchesOnTheReview = flow.data_flow_connections.filter(
+    (e) =>
+      refOf(e.source_node) === "recipients-review_gate" &&
+      flow.$referenced_components[refOf(e.destination_node)]?.component_type === "BranchingNode",
+  );
+  assert.deepEqual(
+    branchesOnTheReview.map((e) => refOf(e.destination_node)),
+    [],
+    "a step of the recipients sub-flow branches on the answer",
+  );
   const readers = flow.data_flow_connections.filter(
     (e) => refOf(e.source_node) === "recipients-review_gate" && e.source_output === "userResponse",
   );
