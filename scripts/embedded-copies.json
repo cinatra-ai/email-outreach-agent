@@ -4,9 +4,9 @@
     "prefix": "recipients-",
     "package": "@cinatra-ai/email-recipient-selection-agent",
     "repository": "cinatra-ai/email-recipient-selection-agent",
-    "commit": "cc23c0463df66757ddb70759b778591004dfcd03",
+    "commit": "0c0517fbb4855f23f24f23fe0f094d9026b99a41",
     "snapshot": "scripts/children/email-recipient-selection-agent.oas.json",
-    "blob": "4fc16b0f6713824ef766cb14e13d78f145ea2934",
+    "blob": "ef97fd6d8ee35378920a134493426423b824048d",
     "declared": [
       {
         "child": "cinatra-ai/email-recipient-selection-agent",
@@ -89,6 +89,13 @@
         "step": "generate",
         "path": "data.cinatra_llm",
         "reason": "The outreach's steps keep the model preference they have today."
+      },
+      {
+        "child": "cinatra-ai/email-recipient-selection-agent",
+        "kind": "omit-key",
+        "step": "fetch_lists",
+        "path": "data.cinatra_llm",
+        "reason": "The outreach's steps keep the model preference they have today: none of them declares one, and the new list read declares none either."
       }
     ]
   },
