@@ -3,7 +3,8 @@
   "version": "0.1.7",
   "license": "Apache-2.0",
   "files": [
-    "cinatra"
+    "cinatra",
+    "src/renderers"
   ],
   "description": "Email outreach workflow orchestrator: create campaign inline, then generate recipients, draft emails, run quality review, then send.",
   "type": "module",

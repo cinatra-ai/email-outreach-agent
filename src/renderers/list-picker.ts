@@ -10,8 +10,11 @@ import { createElement, Fragment, useEffect, useRef, useState } from "react";
 // WHAT IT READS. The step before the gate hands the picker the CRM's lists as
 // `{ lists: [{ id, name }], listsRead }` (the recipient selection flow's
 // `emit_lists` step). The value may arrive as that object or as its JSON text.
-// An entry without an id that is not blank is no row; an id given twice is one
-// row, the first.
+// It offers rows only when the read reports `listsRead: "ok"`: a failed read,
+// or one that reports no outcome or another one, offers no row, so nothing is
+// selectable and the step draws its empty-state message. An entry is a row only
+// when its id and its name are both texts that are not blank; an id given twice
+// is one row, the first that is a row.
 //
 // WHAT IT WRITES. One checkbox row per list, nothing ticked for the reader.
 // Each tick or untick writes `{ listIds, listNames }`, the ticked lists in the
@@ -64,19 +67,18 @@ export function offeredLists(value: unknown): OfferedList[] {
       return [];
     }
   }
-  const lists =
-    content !== null && typeof content === "object" && !Array.isArray(content)
-      ? (content as { lists?: unknown }).lists
-      : undefined;
-  if (!Array.isArray(lists)) return [];
+  if (content === null || typeof content !== "object" || Array.isArray(content)) return [];
+  const { lists, listsRead } = content as { lists?: unknown; listsRead?: unknown };
+  if (listsRead !== "ok" || !Array.isArray(lists)) return [];
   const seen = new Set<string>();
   const offered: OfferedList[] = [];
   for (const entry of lists as unknown[]) {
     if (entry === null || typeof entry !== "object" || Array.isArray(entry)) continue;
     const { id, name } = entry as { id?: unknown; name?: unknown };
     if (typeof id !== "string" || id.trim().length === 0 || seen.has(id)) continue;
+    if (typeof name !== "string" || name.trim().length === 0) continue;
     seen.add(id);
-    offered.push({ id, name: typeof name === "string" ? name : "" });
+    offered.push({ id, name });
   }
   return offered;
 }

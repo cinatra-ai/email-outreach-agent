@@ -57,6 +57,22 @@
       },
       {
         "child": "cinatra-ai/email-recipient-selection-agent",
+        "kind": "omit-text",
+        "step": "generate",
+        "path": "data.system",
+        "text": " or of the recipient limit: such an error is returned at once, without objects_save",
+        "reason": "Names the recipient limit that the entry above leaves out; the sentence keeps the Step 1 error as its only exception."
+      },
+      {
+        "child": "cinatra-ai/email-recipient-selection-agent",
+        "kind": "omit-text",
+        "step": "generate",
+        "path": "data.system",
+        "text": " or of the recipient limit",
+        "reason": "Names the recipient limit that the entries above leave out; Step 5 keeps the Step 1 error as its only exception before objects_save."
+      },
+      {
+        "child": "cinatra-ai/email-recipient-selection-agent",
         "kind": "omit-key",
         "step": "scope_gate",
         "path": "metadata.cinatra.riskClass",
