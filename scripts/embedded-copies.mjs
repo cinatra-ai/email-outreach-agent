@@ -35,6 +35,7 @@ export const KINDS = Object.freeze([
   "omit-key",
   "omit-text",
   "copy-value",
+  "add-value",
   "control-edge",
   "data-edge",
   "rename-step",
@@ -193,6 +194,23 @@ function applyEntry(flow, entry, fail) {
         fail(`'${entry.step}.${entry.path}' already holds the declared value`);
       }
       node[key] = clone(entry.value);
+      return;
+    }
+    case "add-value": {
+      // A value the child does not carry: the parent path must exist, the last key must not.
+      if (!Object.hasOwn(entry, "value")) fail("the entry stores no value");
+      const keys = entry.path.split(".");
+      let node = stepOf(flow, entry.step, fail);
+      for (const key of keys.slice(0, -1)) {
+        if (node === null || typeof node !== "object" || !Object.hasOwn(node, key)) {
+          fail(`path '${entry.path}' is absent`);
+        }
+        node = node[key];
+      }
+      if (node === null || typeof node !== "object" || Array.isArray(node)) fail(`path '${entry.path}' is absent`);
+      const last = keys[keys.length - 1];
+      if (Object.hasOwn(node, last)) fail(`'${entry.step}.${entry.path}' is already present`);
+      node[last] = clone(entry.value);
       return;
     }
     case "control-edge": {

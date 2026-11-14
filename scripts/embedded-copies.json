@@ -250,6 +250,18 @@
       },
       {
         "child": "cinatra-ai/email-delivery-agent",
+        "kind": "add-value",
+        "step": "send",
+        "path": "metadata.cinatra.tools",
+        "value": [
+          "email_outreach_send_initial_start",
+          "email_outreach_send_initial_status",
+          "objects_get"
+        ],
+        "reason": "The outreach's send offers the model the tools of the delivery step it is generated from, the read, the send start and the send status, and no other; the delivery flow at the pinned commit declares no list."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
         "kind": "copy-value",
         "step": "send",
         "path": "data.system",
