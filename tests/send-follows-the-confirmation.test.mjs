@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------------
-// The send follows the confirmation — zero-dependency, runs under
-// tests/run.mjs. cinatra-ai/cinatra#3745 (acceptance 5, the pack's side).
+// The send follows the confirmation - zero-dependency, runs under
+// tests/run.mjs. cinatra-ai/cinatra#3745 (the pack's side).
 //
 // A run of this agent sends mail on a person's behalf. The platform holds a
 // send until the person has decided, and it offers a step only the tools its
@@ -15,11 +15,23 @@
 //   2. The send step's tool offer is the flow's declaration. The host reads a
 //      model-bridge step's declaration from `metadata.cinatra.tools`. This
 //      flow declares none for any step today, so the host offers each step
-//      every tool it serves; the suite pins that reading and the names the
-//      send step's own text calls.
+//      every tool it serves. The suite pins that reading, and it reads the
+//      tool names every step's call data carries against explicit lists:
+//      a name that is not on a list fails, so a tool added to any step turns
+//      the suite red until the list names it.
 //
-// These pins hold at the base: they guard it. Each test names the change that
+// The pins hold at the base: they guard it. Each test names the change that
 // turns it red.
+//
+// Known limits
+//   - A tool name is read as a snake_case word (it has an underscore) or as
+//     a name followed directly by "(". A tool named by one plain word with no
+//     parenthesis in the text is not seen. Every tool of this flow's
+//     vocabulary has an underscore.
+//   - Only the call data of ApiNode steps is read. A tool named in another
+//     kind of step is not seen.
+//   - The copy of the host's declaration reader below is checked against its
+//     rule as the PR describes it, not against the host's source.
 // ---------------------------------------------------------------------------
 
 import { test } from "node:test";
@@ -37,7 +49,8 @@ const refOf = (r) => r?.$component_ref;
  * One graph over a flow and the sub-flows it inlines. A node of a sub-flow is
  * named `<flow node>/<its id>`. An edge into a flow node enters that
  * sub-flow's start node; an edge out of one leaves from every end node of the
- * sub-flow.
+ * sub-flow. A node with no component, or an edge with an end that is not a
+ * node of its flow, throws: the graph is never read in part.
  */
 function flatten(flow, scope = "") {
   const refs = flow.$referenced_components ?? {};
@@ -48,8 +61,10 @@ function flatten(flow, scope = "") {
   for (const n of flow.nodes ?? []) {
     const id = refOf(n);
     const comp = refs[id];
+    if (!comp) throw new Error(`${scope}${id} is a node of the flow with no component`);
     const global = scope + id;
-    if (comp?.component_type === "FlowNode" && comp.subflow) {
+    if (comp.component_type === "FlowNode") {
+      if (!comp.subflow || !refs[refOf(comp.subflow)]) throw new Error(`${global} names a sub-flow that is not there`);
       const sub = flatten(refs[refOf(comp.subflow)], global + "/");
       for (const [k, v] of sub.nodes) nodes.set(k, v);
       edges.push(...sub.edges);
@@ -62,13 +77,15 @@ function flatten(flow, scope = "") {
     }
   }
   for (const e of flow.control_flow_connections ?? []) {
-    for (const from of exits.get(refOf(e.from_node)) ?? []) {
-      edges.push({ from, to: entry.get(refOf(e.to_node)), branch: e.from_branch });
-    }
+    const from = refOf(e.from_node);
+    const to = refOf(e.to_node);
+    if (!exits.has(from) || !entry.has(to)) throw new Error(`${scope}${e.name} has an end that is not a node of its flow`);
+    for (const f of exits.get(from)) edges.push({ from: f, to: entry.get(to), branch: e.from_branch });
   }
   const ends = [...nodes.entries()]
-    .filter(([k, c]) => c?.component_type === "EndNode" && k.startsWith(scope) && !k.slice(scope.length).includes("/"))
+    .filter(([k, c]) => c.component_type === "EndNode" && k.startsWith(scope) && !k.slice(scope.length).includes("/"))
     .map(([k]) => k);
+  if (!entry.has(refOf(flow.start_node))) throw new Error(`${scope} has a start node that is not one of its nodes`);
   return { nodes, edges, start: entry.get(refOf(flow.start_node)), ends };
 }
 
@@ -97,11 +114,12 @@ test("the steps this suite names are the ones the flow has", () => {
   assert.equal(graph.nodes.get(FILING)?.component_type, "ApiNode");
   assert.equal(graph.nodes.get(SEND)?.component_type, "ApiNode");
   assert.match(graph.nodes.get(SEND).url, /\/api\/llm-bridge$/);
+  assert.equal(graph.nodes.get("campaign_summary")?.component_type, "OutputMessageNode");
 });
 
 test("the send step is the only step of the flow with the send risk class", () => {
   const sending = [...graph.nodes.entries()]
-    .filter(([, c]) => c?.metadata?.cinatra?.riskClass === "email_send")
+    .filter(([, c]) => c.metadata?.cinatra?.riskClass === "email_send")
     .map(([k]) => k);
   assert.deepEqual(sending, [SEND]);
 });
@@ -120,7 +138,7 @@ test("the confirmation has one edge out, the affirmative one, and nothing routes
   assert.equal(out[0].to, FILING);
   assert.equal(out[0].branch, undefined, "the confirmation's edge is a named branch");
   const branching = [...graph.nodes.entries()].filter(
-    ([k, c]) => k.startsWith("sender_flow/") && c?.component_type === "BranchingNode",
+    ([k, c]) => k.startsWith("sender_flow/") && c.component_type === "BranchingNode",
   );
   assert.deepEqual(branching.map(([k]) => k), [], "a step of the send sub-flow branches");
   // The one place the confirmation's answer goes is the sub-flow's end node.
@@ -145,15 +163,78 @@ test("after the send the run ends through the closing statement (red: an edge fr
   assert.deepEqual(outOf("campaign_summary").map((e) => e.to), ["end"]);
 });
 
-test("no step but the confirmed send names a send tool (red: a passthrough step or another model step that names one)", () => {
-  const SEND_TOOL = /\b(?:email_send|gmail_email_send|email_outreach_send_[a-z_]+|social_media_publish|linkedin_post_publish)\b/g;
-  const named = [];
-  for (const [id, comp] of graph.nodes) {
-    if (id === SEND || !comp || comp.component_type !== "ApiNode") continue;
-    const text = JSON.stringify(comp.data ?? {});
-    for (const hit of text.match(SEND_TOOL) ?? []) named.push(`${id}: ${hit}`);
+// -- the tool names a step's call data carries ------------------------------
+
+const TEMPLATE = /\{\{[\s\S]*?\}\}|\{#[\s\S]*?#\}/g;
+const SNAKE_NAME = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g;
+const CALLED_NAME = /\b([A-Za-z_][A-Za-z0-9_]*)\(/g;
+
+function stringsOf(value, out = []) {
+  if (typeof value === "string") out.push(value);
+  else if (Array.isArray(value)) for (const v of value) stringsOf(v, out);
+  else if (value && typeof value === "object") for (const v of Object.values(value)) stringsOf(v, out);
+  return out;
+}
+
+/** Every tool-shaped name in a step's call data: its `tool`, every snake_case word and every name followed by "(" in its text. Template slots and comments are left out. */
+function namesIn(step) {
+  const names = new Set();
+  for (const raw of stringsOf(step.data ?? {})) {
+    const text = raw.replace(TEMPLATE, " ");
+    for (const m of text.matchAll(SNAKE_NAME)) names.add(m[0]);
+    for (const m of text.matchAll(CALLED_NAME)) names.add(m[1]);
   }
-  assert.deepEqual(named, []);
+  if (typeof step.data?.tool === "string") names.add(step.data.tool);
+  return [...names].sort();
+}
+
+// What the send step's text names: the read tool and nothing else. Any other
+// name fails the suite until it is listed here, and listing a tool the send
+// step may call is a change of this list.
+const SEND_STEP_NAMES = ["objects_get"];
+
+// What every other model or passthrough step of the flow names today. The
+// ids are exactly the flow's ApiNode steps but the send step. A tool-shaped
+// name added to one of them, or a step added or removed, fails the suite
+// until this list is changed in the same commit. None of these names is a
+// send tool; a send tool named by any step but the send step is therefore a
+// name that is not on this list.
+const OTHER_STEP_NAMES = {
+  "context_setup": ["email_outreach_context_setup", "objects_save"],
+  "recipients_flow/recipients-generate": [
+    "agent_run_id",
+    "cinatra_agent_run_id",
+    "crm_account_get",
+    "crm_contact_get",
+    "crm_list_get",
+    "crm_list_members_get",
+    "objects_save",
+    "unsupported_account_scope",
+  ],
+  "recipients_flow/recipients-apply": ["email_outreach_recipients_update"],
+  "context_offeringContext/ctx-offeringContext-resolve_context": [],
+  "context_offeringContext/ctx-offeringContext-finalize_interactive": [],
+  "context_offeringContext/ctx-offeringContext-finalize_autonomous": [],
+  "drafts_flow/drafts-draft": [
+    "agent_run_id",
+    "artifact_representation_get",
+    "cinatra_agent_run_id",
+    "objects_get",
+    "objects_save",
+  ],
+  "drafts_flow/drafts-read_drafts": ["extension_tool", "saved_drafts"],
+  "drafts_flow/drafts-apply": ["email_outreach_initial_drafts_update"],
+  "sender_flow/sender-file_recipients": ["extension_tool", "recipient_records"],
+};
+
+test("the send step's text names the tools this suite lists and no other (red: any new snake_case name or name( call in the send step's call data)", () => {
+  assert.deepEqual(namesIn(graph.nodes.get(SEND)), SEND_STEP_NAMES);
+});
+
+test("every other step names the tools this suite lists for it and no other (red: a new tool-shaped name in a step's call data, or a step added or removed)", () => {
+  const apiSteps = [...graph.nodes.entries()].filter(([k, c]) => c.component_type === "ApiNode" && k !== SEND);
+  assert.deepEqual(apiSteps.map(([k]) => k).sort(), Object.keys(OTHER_STEP_NAMES).sort());
+  for (const [id, step] of apiSteps) assert.deepEqual(namesIn(step), OTHER_STEP_NAMES[id], id);
 });
 
 // -- the send step's tool offer ---------------------------------------------
@@ -174,27 +255,37 @@ function readDeclaration(node) {
   return { kind: "declared", tools: [...list] };
 }
 
-// What this flow declares for the send step. Nothing is declared today, so
-// the host offers the step every tool it serves. Declaring a list is a change
-// of this constant in the same change (red: a `tools` key on the send step).
-const SEND_STEP_DECLARATION = { kind: "undeclared" };
-// The tool names the send step's own text (system and user message) calls.
-const SEND_STEP_CALLS = ["objects_get"];
+const withTools = (tools) => ({ metadata: { cinatra: { tools } } });
 
-test("the send step's declaration reads as this suite pins it", () => {
+test("the copy of the host's declaration reader reads the cases its rule names", () => {
+  assert.deepEqual(readDeclaration({}), { kind: "undeclared" });
+  assert.deepEqual(readDeclaration({ metadata: { cinatra: {} } }), { kind: "undeclared" });
+  assert.deepEqual(readDeclaration(withTools([])), { kind: "declared", tools: [] });
+  assert.deepEqual(readDeclaration(withTools(["objects_get", "b_c"])), { kind: "declared", tools: ["objects_get", "b_c"] });
+  for (const bad of ["objects_get", null, [1], [""], ["  "], ["a b"], ["Objects_get"], ["a_b", "a_b"]]) {
+    assert.deepEqual(readDeclaration(withTools(bad)), { kind: "invalid" }, JSON.stringify(bad));
+  }
+});
+
+// What this flow declares for the send step. Nothing is declared today, so
+// the host offers the step every tool it serves. This is a change detector:
+// declaring a list for the step changes this constant in the same commit.
+const SEND_STEP_DECLARATION = { kind: "undeclared" };
+
+test("the send step's declaration reads as this suite pins it (a change detector: red on a `tools` key on the send step)", () => {
   assert.deepEqual(readDeclaration(graph.nodes.get(SEND)), SEND_STEP_DECLARATION);
+});
+
+test("when the send step declares a list it is exactly the tools its text names (vacuous while the step declares none)", () => {
+  const reading = readDeclaration(graph.nodes.get(SEND));
+  if (reading.kind === "undeclared") return;
+  assert.equal(reading.kind, "declared");
+  assert.deepEqual([...reading.tools].sort(), SEND_STEP_NAMES);
 });
 
 test("no model step of the flow carries a declaration the host refuses", () => {
   for (const [id, comp] of graph.nodes) {
-    if (comp?.component_type !== "ApiNode" || !/\/api\/llm-bridge$/.test(comp.url ?? "")) continue;
+    if (comp.component_type !== "ApiNode" || !/\/api\/llm-bridge$/.test(comp.url ?? "")) continue;
     assert.notEqual(readDeclaration(comp).kind, "invalid", `${id} carries a declaration the host refuses`);
   }
-});
-
-test("the send step's text calls the tools this suite names and no other (red: the text starts to call another tool)", () => {
-  const send = graph.nodes.get(SEND);
-  const text = `${send.data.system}\n${send.data.user}`;
-  const calls = [...new Set(text.match(/\b(?:objects|email|gmail|social|linkedin|artifact|extension)_[a-z0-9_]+\b/g) ?? [])].sort();
-  assert.deepEqual(calls, [...SEND_STEP_CALLS].sort());
 });
