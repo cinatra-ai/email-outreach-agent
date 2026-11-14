@@ -61,3 +61,23 @@ test("the embedded recipient selection copy is taken from the commit that reads 
   assert.ok(group, "the declared list carries no recipient selection copy");
   assert.equal(group.commit, RECIPIENT_SELECTION_COMMIT);
 });
+
+// The application installs this package from its packed artifact, which holds
+// only what the manifest's `files` allow-list names (with package.json, the
+// README and the LICENSE). A component entry outside that list is absent from
+// the installed package even though it exists in this checkout.
+test("the packed package carries the component entry", () => {
+  const allow = pkg.files;
+  assert.ok(Array.isArray(allow) && allow.length > 0, "the manifest declares no files allow-list");
+  for (const pattern of allow) {
+    assert.equal(typeof pattern, "string", "a files entry is not a path");
+    assert.ok(!/[*?[\]{}!]/.test(pattern), `the files entry "${pattern}" is a pattern this arm does not read`);
+  }
+  const entry = path.posix.normalize(ENTRY);
+  const shipped = allow.some((pattern) => {
+    const prefix = path.posix.normalize(pattern).replace(/^\.\//, "").replace(/\/+$/, "");
+    return entry === prefix || entry.startsWith(`${prefix}/`);
+  });
+  assert.ok(shipped, `${ENTRY} is not under any entry of the files allow-list ${JSON.stringify(allow)}`);
+  assert.ok(!existsSync(path.join(root, ".npmignore")), "an .npmignore file could leave the entry out of the packed package");
+});

@@ -27,4 +27,5 @@ import "./drafts-review-edits-reach-the-send.test.mjs";
 import "./saved-drafts-tool.test.mjs";
 import "./list-picker-component-declaration.test.mjs";
 import "./list-picker-renderer.test.mjs";
+import "./list-picker-offered-lists.test.mjs";
 import "./send-follows-the-confirmation.test.mjs";
