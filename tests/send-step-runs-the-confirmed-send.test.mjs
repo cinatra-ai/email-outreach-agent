@@ -14,22 +14,32 @@
 //      confirmation is asked for, and no approval boundary is enforced;
 //   2. the two references are read at most once each;
 //   3. the send start tool is called exactly once, with an empty sender
-//      address left out;
+//      address left out; a start call that returns an error is a failed
+//      send, with no poll;
 //   4. the start result's status is used when it is terminal; only otherwise
 //      the send status tool is polled, at most 2 times;
 //   5. polls that end without a terminal status are a failed send with
-//      POLL_BUDGET_EXHAUSTED;
+//      "errorCode": "POLL_BUDGET_EXHAUSTED";
 //   6. the step ends with one final answer that is only the JSON sendResult,
-//      with status completed or failed and a summary of one sentence.
+//      with status completed or failed, an errorCode, and a summary of one
+//      sentence.
+//
+// The runtime asks the model for exactly the declared result: every declared
+// member is required and no other member is allowed. So the members the
+// instructions ask for and the members the step declares must be the same
+// set: status, errorCode and summary. errorCode is POLL_BUDGET_EXHAUSTED
+// only when the polls end without a terminal status, and the empty string in
+// every other answer.
 //
 // The step budget is pinned at the delivery step's 10: 2 reads, 1 start
 // call, 2 polls and the final answer take 6 model steps. The closing
-// message, the declared result members and the user text's input slots are
-// pinned unchanged.
+// message and the user text's input slots are pinned unchanged.
 //
 // Known limits
 //   - The instructions are read as text. A test proves that the text says a
-//     thing, not that a model does it.
+//     thing, not that a model does it. The answers checked against the
+//     declared result are written by hand; they prove that the shape the
+//     instructions ask for can be answered, not that a model answers it.
 // ---------------------------------------------------------------------------
 
 import { test } from "node:test";
@@ -48,6 +58,42 @@ const send = oas.$referenced_components["email-delivery-subflow"].$referenced_co
 const S = send.data.system;
 const U = send.data.user;
 const has = (text) => assert.ok(S.includes(text), `the instructions do not say: ${text}`);
+
+/** The send step's declared sendResult schema. */
+function declaredResult() {
+  const result = send.outputs.find((o) => o.title === "sendResult");
+  assert.ok(result, "the send step declares no sendResult");
+  return result.json_schema;
+}
+
+/**
+ * Checks an answer's sendResult the way the runtime asks for it: every
+ * declared member is required, no other member is allowed, and each value
+ * has its declared type. Returns the list of problems (empty when it fits).
+ */
+function misfits(answer) {
+  const schema = declaredResult();
+  const declared = Object.keys(schema.properties);
+  const problems = [];
+  for (const name of declared) {
+    if (!Object.prototype.hasOwnProperty.call(answer, name)) problems.push(`missing ${name}`);
+    else if (typeof answer[name] !== schema.properties[name].type) problems.push(`${name} is not a ${schema.properties[name].type}`);
+  }
+  for (const name of Object.keys(answer)) {
+    if (!declared.includes(name)) problems.push(`undeclared ${name}`);
+  }
+  return problems;
+}
+
+/** The member names of the final-answer shape the instructions spell out. */
+function finalShapeMembers() {
+  const at = S.indexOf("{\"sendResult\": {");
+  assert.ok(at >= 0, "the instructions spell out no sendResult shape");
+  const end = S.indexOf("}}", at);
+  assert.ok(end > at, "the sendResult shape in the instructions is not closed");
+  const inner = S.slice(at + "{\"sendResult\": {".length, end);
+  return [...inner.matchAll(/"([A-Za-z]+)":/g)].map((m) => m[1]);
+}
 
 test("the send step is the model-bridge step the suite reads", () => {
   assert.equal(send.component_type, "ApiNode");
@@ -104,10 +150,11 @@ test("9. the send step's budget is 10, the delivery step's own (red: the budget 
   assert.equal(send.data.max_steps, 10);
 });
 
-test("10. the send step's declared result keeps status and summary (a pin: holds before and after)", () => {
-  const result = send.outputs.find((o) => o.title === "sendResult");
-  assert.ok(result, "the send step declares no sendResult");
-  assert.deepEqual(Object.keys(result.json_schema.properties).sort(), ["status", "summary"]);
+test("10. the send step's declared result keeps status and summary and declares errorCode, each a string (red: errorCode is not declared, so the answer cannot carry it)", () => {
+  assert.deepEqual(Object.keys(declaredResult().properties).sort(), ["errorCode", "status", "summary"]);
+  for (const [name, member] of Object.entries(declaredResult().properties)) {
+    assert.equal(member.type, "string", `sendResult.${name} is not declared as a string`);
+  }
 });
 
 test("11. the user text keeps its four input slots (a pin: holds before and after)", () => {
@@ -118,6 +165,34 @@ test("11. the user text keeps its four input slots (a pin: holds before and afte
     send.inputs.map((i) => i.title),
     ["campaignId", "approvedDraftBundleRef", "confirmedRecipientsRef", "senderEmail", "agent_run_id"],
   );
+});
+
+test("12. every member the instructions ask for is declared, and the final-answer shape names every declared member (red: the instructions ask for errorCode, which is not declared)", () => {
+  const declared = Object.keys(declaredResult().properties).sort();
+  const asked = [...new Set([...S.matchAll(/"([A-Za-z]+)":/g)].map((m) => m[1]))].filter((n) => n !== "sendResult").sort();
+  assert.deepEqual(asked, declared, "the members the instructions ask for are not the declared members");
+  assert.deepEqual([...finalShapeMembers()].sort(), declared, "the final-answer shape does not name the declared members");
+});
+
+test("13. a poll-exhaustion answer and a completed answer fit the declared result as the runtime asks for it (red: errorCode is not a declared member)", () => {
+  const exhausted = { status: "failed", errorCode: "POLL_BUDGET_EXHAUSTED", summary: "The result of the send could not be confirmed." };
+  const completed = { status: "completed", errorCode: "", summary: "12 messages went out." };
+  assert.deepEqual(misfits(exhausted), [], "the poll-exhaustion answer does not fit the declared result");
+  assert.deepEqual(misfits(completed), [], "the completed answer does not fit the declared result");
+  // The check is not vacuous: a missing member and an extra member are both refused.
+  assert.notDeepEqual(misfits({ status: "failed", summary: "x" }), []);
+  assert.notDeepEqual(misfits({ ...exhausted, operationId: "" }), []);
+});
+
+test("14. the instructions keep every member in every answer, with errorCode empty unless the polls ran out (red: they give errorCode in one answer only)", () => {
+  has("All three members are always present");
+  has("Use \"errorCode\": \"POLL_BUDGET_EXHAUSTED\" only when the polls ended without \"completed\" or \"failed\"");
+  has("in every other final answer, errorCode is the empty string");
+});
+
+test("15. a start call that returns an error is a failed send with no poll (red: the text calls it a failure, but its next step polls on any status that is not terminal)", () => {
+  has("If the start call returns an error instead of a result, the send failed: do not poll");
+  has("a summary that says the send could not be started");
 });
 
 // The closing message as it stands; it reads the send step's result.
