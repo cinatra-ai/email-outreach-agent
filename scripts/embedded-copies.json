@@ -191,9 +191,9 @@
     "prefix": "sender-",
     "package": "@cinatra-ai/email-delivery-agent",
     "repository": "cinatra-ai/email-delivery-agent",
-    "commit": "5087421bd4d0f5132f31a1f1365138603e63c05a",
+    "commit": "8f8b737dc66c82ef74b08b7ab989ada0a08228e5",
     "snapshot": "scripts/children/email-delivery-agent.oas.json",
-    "blob": "fa849d50e4584390b4722f3d1d6e48b7af1af521",
+    "blob": "2268c2716aa107101d126f62dc1c9fa848f3cd59",
     "declared": [
       {
         "child": "cinatra-ai/email-delivery-agent",
@@ -216,6 +216,30 @@
       },
       {
         "child": "cinatra-ai/email-delivery-agent",
+        "kind": "omit-text",
+        "step": "prepare",
+        "path": "data.system",
+        "text": " This step exists so the operator can review the REAL recipient/draft counts at the confirmation gate before approving the send.",
+        "reason": "The copy keeps the prepare step for the content digest only: its summary is not handed to the confirmation, so the step does not say that the operator sees it there."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "omit-text",
+        "step": "prepare",
+        "path": "outputs.0.description",
+        "text": "The pre-send summary the confirmation gate surfaces. ",
+        "reason": "The copy keeps the prepare step for the content digest only: its summary is not handed to the confirmation, so the step does not say that the operator sees it there."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "omit-text",
+        "step": "prepare",
+        "path": "metadata.cinatra.description",
+        "text": " Its summary is what the confirmation gate surfaces to the operator.",
+        "reason": "The copy keeps the prepare step for the content digest only: its summary is not handed to the confirmation, so the step does not say that the operator sees it there."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
         "kind": "omit-step",
         "step": "delivery_summary",
         "reason": "The child's closing sentence; the outreach ends once, in its campaign summary."
@@ -225,14 +249,14 @@
         "kind": "omit-input",
         "step": "approval_gate",
         "input": "summary",
-        "reason": "The outreach's confirmation shows the campaign and the mailbox only; the prepare step's summary is not handed to it."
+        "reason": "The outreach's confirmation is not handed the prepare step's summary, so its Recipients and Drafts rows show a dash and not a count, as they do today."
       },
       {
         "child": "cinatra-ai/email-delivery-agent",
         "kind": "control-edge",
         "from": "send",
         "to": "end",
-        "reason": "Joins the send to the end, where the child runs its closing sentence."
+        "reason": "Joins the send to the copy's end: the child's closing sentence is left out, and the outreach runs its own campaign summary after the copy."
       },
       {
         "child": "cinatra-ai/email-delivery-agent",
