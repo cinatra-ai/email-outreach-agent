@@ -118,8 +118,10 @@ test("3. the instructions call the send start tool exactly once, never a second 
   assert.equal(S.split(START).length - 1, 1, "the start tool is named more than once");
 });
 
-test("4. the instructions leave out an empty sender address (red: they never say what to do with an empty senderEmail)", () => {
-  has("Leave out senderEmail when it is empty");
+test("4. the instructions pass the five confirmed arguments, an empty one as JSON null (red: they leave out an empty senderEmail and name no contentDigest)", () => {
+  has("with exactly these five arguments and no other key: campaignId, senderEmail, approvedDraftBundleRef, confirmedRecipientsRef and contentDigest");
+  has("When an input is empty, pass JSON null for that key, because the gate carries an empty value as null");
+  assert.equal(S.includes("Leave out senderEmail"), false, "the instructions still leave out an empty senderEmail");
 });
 
 test("5. the instructions use the start result's terminal status and poll the status tool at most 2 times otherwise (red: they name no status tool and set no poll limit)", () => {
@@ -157,13 +159,13 @@ test("10. the send step's declared result keeps status and summary and declares 
   }
 });
 
-test("11. the user text keeps its four input slots (a pin: holds before and after)", () => {
-  for (const slot of ["campaignId", "approvedDraftBundleRef", "confirmedRecipientsRef", "senderEmail"]) {
+test("11. the user text carries its five input slots (red: it carries no contentDigest slot)", () => {
+  for (const slot of ["campaignId", "approvedDraftBundleRef", "confirmedRecipientsRef", "senderEmail", "contentDigest"]) {
     assert.ok(U.includes(`{{ ${slot} }}`), `the user text lost {{ ${slot} }}`);
   }
   assert.deepEqual(
     send.inputs.map((i) => i.title),
-    ["campaignId", "approvedDraftBundleRef", "confirmedRecipientsRef", "senderEmail", "agent_run_id"],
+    ["campaignId", "approvedDraftBundleRef", "confirmedRecipientsRef", "senderEmail", "contentDigest", "agent_run_id"],
   );
 });
 

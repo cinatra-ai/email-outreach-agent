@@ -270,6 +270,9 @@ const OTHER_STEP_NAMES = table({
   "drafts_flow/drafts-read_drafts": ["extension_tool", "saved_drafts"],
   "drafts_flow/drafts-apply": ["email_outreach_initial_drafts_update"],
   "sender_flow/sender-file_recipients": ["extension_tool", "recipient_records"],
+  // The read-only preview of the send (cinatra-ai/cinatra#3745): it sends nothing and
+  // returns the counts and the content digest that the confirmation carries.
+  "sender_flow/sender-prepare": ["email_outreach_send_initial_preview", "objects_get"],
 });
 
 test("the send step's text names the tools this suite lists and no other (red: any new snake_case name or name( call in the send step's call data outside its template slots and comments)", () => {
