@@ -554,7 +554,7 @@
           "riskClass": "read_only",
           "requiresApproval": false,
           "packageName": "@cinatra-ai/email-delivery-agent",
-          "description": "Read-only pre-send summarizer. Reads approvedDraftBundleRef + confirmedRecipientsRef (and optionally the campaign record) via the injected Cinatra self-MCP objects_get, calls the read-only email_outreach_send_initial_preview once, and returns { summary: { recipientCount, draftCount, scheduledAt }, contentDigest }: the counts computed from the REAL loaded records, the digest exactly as the preview returned it (the empty string when it returned none). metadata.cinatra.toolboxes is INTENTIONALLY OMITTED so the default always-inject path reaches objects_get. This node performs NO write. Its summary is what the confirmation gate surfaces to the operator."
+          "description": "Read-only pre-send summarizer. Reads all three records, approvedDraftBundleRef, confirmedRecipientsRef and the campaign record (campaignId), via the injected Cinatra self-MCP objects_get, calls the read-only email_outreach_send_initial_preview once, and returns { summary: { recipientCount, draftCount, scheduledAt }, contentDigest }: the counts computed only from the records it actually loaded (a count of 0 when a ref cannot be read), the digest exactly as the preview returned it (the empty string when it returned none). metadata.cinatra.toolboxes is INTENTIONALLY OMITTED so the default always-inject path reaches objects_get. This node performs NO write. Its summary is what the confirmation gate surfaces to the operator."
         }
       }
     },

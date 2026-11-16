@@ -64,6 +64,14 @@ test("an unreadable count is reported as 0, because every summary key is require
   assert.match(prepare.data.system, /cannot be read, set that count to 0/);
 });
 
+test("the copy's prepare description reads all three records and reports an unreadable count as 0, as its text says", () => {
+  assert.match(prepare.data.system, /MUST objects_get ALL THREE records/);
+  const text = prepare.metadata.cinatra.description;
+  assert.doesNotMatch(text, /optionally/i, "the description calls a read optional that the text requires");
+  assert.match(text, /Reads all three records/);
+  assert.match(text, /a count of 0 when a ref cannot be read/);
+});
+
 test("the digest's description leaves the refusal to the application's send start", () => {
   const text = output("contentDigest").description;
   assert.doesNotMatch(text, /so the send is refused/i, "the description states a refusal this flow does not make");

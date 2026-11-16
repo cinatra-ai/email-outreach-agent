@@ -191,9 +191,9 @@
     "prefix": "sender-",
     "package": "@cinatra-ai/email-delivery-agent",
     "repository": "cinatra-ai/email-delivery-agent",
-    "commit": "8f8b737dc66c82ef74b08b7ab989ada0a08228e5",
+    "commit": "9c6c9c0932880e2608eae6b49862bc7665e13e4b",
     "snapshot": "scripts/children/email-delivery-agent.oas.json",
-    "blob": "2268c2716aa107101d126f62dc1c9fa848f3cd59",
+    "blob": "0c8fca30152b8d5379585df6afdb93857b9d678a",
     "declared": [
       {
         "child": "cinatra-ai/email-delivery-agent",
