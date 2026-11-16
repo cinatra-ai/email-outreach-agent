@@ -28,3 +28,4 @@ import "./saved-drafts-tool.test.mjs";
 import "./send-follows-the-confirmation.test.mjs";
 import "./send-step-runs-the-confirmed-send.test.mjs";
 import "./send-carries-the-confirmed-arguments.test.mjs";
+import "./prepare-texts-match-the-copy.test.mjs";
