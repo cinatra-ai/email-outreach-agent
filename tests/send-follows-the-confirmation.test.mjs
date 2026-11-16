@@ -230,10 +230,11 @@ function namesIn(step) {
   return [...names].sort();
 }
 
-// What the send step's text names: the read tool and nothing else. Any other
-// name fails the suite until it is listed here, and listing a tool the send
-// step may call is a change of this list.
-const SEND_STEP_NAMES = ["objects_get"];
+// What the send step's text names: the read tool, the send start tool and the
+// send status tool, and nothing else. Any other name fails the suite until it
+// is listed here, and listing a tool the send step may call is a change of
+// this list.
+const SEND_STEP_NAMES = ["email_outreach_send_initial_start", "email_outreach_send_initial_status", "objects_get"];
 // Snake_case words of the delivery step's text that are not tools.
 const SEND_STEP_CHILD_WORDS = ["agent_run", "agent_run_id", "max_steps"];
 
