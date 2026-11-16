@@ -313,9 +313,9 @@ test("the copy of the host's declaration reader reads the cases its rule names",
 });
 
 // What this flow declares for the send step: the three tools of the delivery
-// step this step is re-inlined from. The step's own text names the read only
-// and leaves the choice of the send tools to the model, so the declaration is
-// what ties the step's offer to the send start and status and to nothing else.
+// step this step is re-inlined from. The step's own text names the same three
+// (SEND_STEP_NAMES), and the declaration is what limits the step's offer to
+// the read, the send start and the send status and to nothing else.
 // This is a change detector: a change of the list changes this constant in the
 // same commit.
 const SEND_STEP_DECLARED = ["email_outreach_send_initial_start", "email_outreach_send_initial_status", "objects_get"];
