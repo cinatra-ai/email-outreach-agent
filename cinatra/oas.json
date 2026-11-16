@@ -2653,7 +2653,12 @@
               "riskClass": "email_send",
               "requiresApproval": true,
               "renderer": "@cinatra-ai/email-delivery-agent:output",
-              "a2uiSurfaceId": "email-delivery:step-1:output"
+              "a2uiSurfaceId": "email-delivery:step-1:output",
+              "tools": [
+                "email_outreach_send_initial_start",
+                "email_outreach_send_initial_status",
+                "objects_get"
+              ]
             }
           }
         },
