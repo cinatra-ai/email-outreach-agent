@@ -253,16 +253,16 @@
         "kind": "copy-value",
         "step": "send",
         "path": "data.system",
-        "value": "You are an email campaign sender agent. Fetch the confirmed recipients via objects_get(confirmedRecipientsRef) and the approved draft bundle via objects_get(approvedDraftBundleRef). You safely launch an approved outreach campaign and enforce an explicit human approval boundary before any real send. Record the send against campaignId. Return a structured result covering approval status, send status, and any operational issues. If objects_get returns null or wrong typeHint for any ref, set sendResult to an error object and do NOT send any email.",
-        "reason": "The child's send step is written for the child's own prepare-and-confirm road and returns a seven-member result; the outreach's send keeps its instructions and its result, which its campaign ending reads."
+        "value": "You are the email campaign sender. The person has already confirmed this send at the send-confirmation gate, which stands before this step. Do not ask for another confirmation, and do not wait for one. Your one task is to run the confirmed send and report its result.\n\n1. You may read the two references, at most once each: objects_get({ objectId: confirmedRecipientsRef }) for the confirmed recipients and objects_get({ objectId: approvedDraftBundleRef }) for the approved draft bundle. If a reference is missing or has the wrong typeHint, do not call the start tool: your final answer has \"status\": \"failed\" and a summary that names the reference that could not be read.\n\n2. Call email_outreach_send_initial_start exactly once, with campaignId, approvedDraftBundleRef and confirmedRecipientsRef. Leave out senderEmail when it is empty; pass it only when it is not empty. Never call the start tool a second time. If the start call returns an error instead of a result, the send failed: do not poll, and your final answer has \"status\": \"failed\" and a summary that says the send could not be started.\n\n3. If the start result's status is \"completed\" or \"failed\", use it and do not poll. Only when it is neither, call email_outreach_send_initial_status with { campaignId }, at most 2 times, and stop at the first \"completed\" or \"failed\".\n\n4. If the polls end without \"completed\" or \"failed\", the send failed: your final answer has \"status\": \"failed\", \"errorCode\": \"POLL_BUDGET_EXHAUSTED\" and a summary that says the result of the send could not be confirmed.\n\n5. End with one final answer that is only the JSON {\"sendResult\": {\"status\": \"completed\" | \"failed\", \"errorCode\": \"POLL_BUDGET_EXHAUSTED\" | \"\", \"summary\": \"<one sentence: how many messages went out, or what stopped the send>\"}}, with no prose and no Markdown. All three members are always present. Use \"status\": \"completed\" only when the start or status result was \"completed\", and \"status\": \"failed\" for every send that did not complete. Use \"errorCode\": \"POLL_BUDGET_EXHAUSTED\" only when the polls ended without \"completed\" or \"failed\"; in every other final answer, errorCode is the empty string. The summary is one sentence.",
+        "reason": "The child's send text returns a seven-member result and carries notes about its own road; the outreach's send runs the same confirmed send with the same read, start and status tools, writes its own poll limit and failure shapes, and returns the status and summary that its campaign ending reads, with an errorCode that names a send whose result could not be confirmed."
       },
       {
         "child": "cinatra-ai/email-delivery-agent",
         "kind": "copy-value",
         "step": "send",
         "path": "data.user",
-        "value": "Execute the email sending task now and return the result as JSON.\nInputs:\n- confirmedRecipientsRef: {{ confirmedRecipientsRef }}\n- approvedDraftBundleRef: {{ approvedDraftBundleRef }}\n- senderEmail: {{ senderEmail }}\n- campaignId: {{ campaignId }}",
-        "reason": "The child's send step is written for the child's own prepare-and-confirm road and returns a seven-member result; the outreach's send keeps its instructions and its result, which its campaign ending reads."
+        "value": "The person confirmed this send at the send-confirmation gate. Run the campaign send now and return the result as JSON.\nInputs:\n- campaignId: {{ campaignId }}\n- approvedDraftBundleRef: {{ approvedDraftBundleRef }}\n- confirmedRecipientsRef: {{ confirmedRecipientsRef }}\n- senderEmail: {{ senderEmail }}",
+        "reason": "The child's send text returns a seven-member result and carries notes about its own road; the outreach's send runs the same confirmed send with the same read, start and status tools, writes its own poll limit and failure shapes, and returns the status and summary that its campaign ending reads, with an errorCode that names a send whose result could not be confirmed."
       },
       {
         "child": "cinatra-ai/email-delivery-agent",
@@ -270,13 +270,6 @@
         "step": "send",
         "path": "data.cinatra_llm",
         "reason": "The outreach's steps keep the model preference they have today."
-      },
-      {
-        "child": "cinatra-ai/email-delivery-agent",
-        "kind": "omit-key",
-        "step": "send",
-        "path": "data.max_steps",
-        "reason": "The child's send step is written for the child's own prepare-and-confirm road and returns a seven-member result; the outreach's send keeps its instructions and its result, which its campaign ending reads."
       },
       {
         "child": "cinatra-ai/email-delivery-agent",
@@ -307,6 +300,9 @@
                 "status": {
                   "type": "string"
                 },
+                "errorCode": {
+                  "type": "string"
+                },
                 "summary": {
                   "type": "string"
                 }
@@ -314,7 +310,7 @@
             }
           }
         ],
-        "reason": "The child's send step is written for the child's own prepare-and-confirm road and returns a seven-member result; the outreach's send keeps its instructions and its result, which its campaign ending reads."
+        "reason": "The child's send step is written for the child's own prepare-and-confirm road and returns a seven-member result; the outreach's send returns three of those members: the status and summary that its campaign ending reads, and the errorCode that names a send whose result could not be confirmed."
       }
     ]
   }
