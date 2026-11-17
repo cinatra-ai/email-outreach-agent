@@ -29,3 +29,4 @@ import "./list-picker-component-declaration.test.mjs";
 import "./list-picker-renderer.test.mjs";
 import "./list-picker-offered-lists.test.mjs";
 import "./send-follows-the-confirmation.test.mjs";
+import "./send-step-runs-the-confirmed-send.test.mjs";

@@ -2797,8 +2797,9 @@
           "http_method": "POST",
           "data": {
             "agent_id": "email-delivery",
-            "system": "You are an email campaign sender agent. Fetch the confirmed recipients via objects_get(confirmedRecipientsRef) and the approved draft bundle via objects_get(approvedDraftBundleRef). You safely launch an approved outreach campaign and enforce an explicit human approval boundary before any real send. Record the send against campaignId. Return a structured result covering approval status, send status, and any operational issues. If objects_get returns null or wrong typeHint for any ref, set sendResult to an error object and do NOT send any email.",
-            "user": "Execute the email sending task now and return the result as JSON.\nInputs:\n- confirmedRecipientsRef: {{ confirmedRecipientsRef }}\n- approvedDraftBundleRef: {{ approvedDraftBundleRef }}\n- senderEmail: {{ senderEmail }}\n- campaignId: {{ campaignId }}",
+            "max_steps": 10,
+            "system": "You are the email campaign sender. The person has already confirmed this send at the send-confirmation gate, which stands before this step. Do not ask for another confirmation, and do not wait for one. Your one task is to run the confirmed send and report its result.\n\n1. You may read the two references, at most once each: objects_get({ objectId: confirmedRecipientsRef }) for the confirmed recipients and objects_get({ objectId: approvedDraftBundleRef }) for the approved draft bundle. If a reference is missing or has the wrong typeHint, do not call the start tool: your final answer has \"status\": \"failed\" and a summary that names the reference that could not be read.\n\n2. Call email_outreach_send_initial_start exactly once, with campaignId, approvedDraftBundleRef and confirmedRecipientsRef. Leave out senderEmail when it is empty; pass it only when it is not empty. Never call the start tool a second time. If the start call returns an error instead of a result, the send failed: do not poll, and your final answer has \"status\": \"failed\" and a summary that says the send could not be started.\n\n3. If the start result's status is \"completed\" or \"failed\", use it and do not poll. Only when it is neither, call email_outreach_send_initial_status with { campaignId }, at most 2 times, and stop at the first \"completed\" or \"failed\".\n\n4. If the polls end without \"completed\" or \"failed\", the send failed: your final answer has \"status\": \"failed\", \"errorCode\": \"POLL_BUDGET_EXHAUSTED\" and a summary that says the result of the send could not be confirmed.\n\n5. End with one final answer that is only the JSON {\"sendResult\": {\"status\": \"completed\" | \"failed\", \"errorCode\": \"POLL_BUDGET_EXHAUSTED\" | \"\", \"summary\": \"<one sentence: how many messages went out, or what stopped the send>\"}}, with no prose and no Markdown. All three members are always present. Use \"status\": \"completed\" only when the start or status result was \"completed\", and \"status\": \"failed\" for every send that did not complete. Use \"errorCode\": \"POLL_BUDGET_EXHAUSTED\" only when the polls ended without \"completed\" or \"failed\"; in every other final answer, errorCode is the empty string. The summary is one sentence.",
+            "user": "The person confirmed this send at the send-confirmation gate. Run the campaign send now and return the result as JSON.\nInputs:\n- campaignId: {{ campaignId }}\n- approvedDraftBundleRef: {{ approvedDraftBundleRef }}\n- confirmedRecipientsRef: {{ confirmedRecipientsRef }}\n- senderEmail: {{ senderEmail }}",
             "agent_run_id": "{{ agent_run_id }}"
           },
           "inputs": [
@@ -2844,6 +2845,9 @@
                   "status": {
                     "type": "string"
                   },
+                  "errorCode": {
+                    "type": "string"
+                  },
                   "summary": {
                     "type": "string"
                   }
@@ -2856,7 +2860,12 @@
               "riskClass": "email_send",
               "requiresApproval": true,
               "renderer": "@cinatra-ai/email-delivery-agent:output",
-              "a2uiSurfaceId": "email-delivery:step-1:output"
+              "a2uiSurfaceId": "email-delivery:step-1:output",
+              "tools": [
+                "email_outreach_send_initial_start",
+                "email_outreach_send_initial_status",
+                "objects_get"
+              ]
             }
           }
         },

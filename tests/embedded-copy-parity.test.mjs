@@ -97,7 +97,7 @@ test("(7) every declared difference names its child and its reason and still app
     };
     assert.throws(() => generateCopy(children[index], stale), (error) => error.message.includes(group.repository));
     // A declaration the child already meets fails too: a second copy of an edge or of a stored value.
-    for (const entry of group.declared.filter((e) => ["control-edge", "data-edge", "copy-value"].includes(e.kind))) {
+    for (const entry of group.declared.filter((e) => ["control-edge", "data-edge", "copy-value", "add-value"].includes(e.kind))) {
       const redundant = { ...group, declared: [...group.declared, entry] };
       assert.throws(
         () => generateCopy(children[index], redundant),
@@ -106,6 +106,44 @@ test("(7) every declared difference names its child and its reason and still app
       );
     }
   }
+});
+
+test("(7) an add-value entry adds a value the child lacks, and refuses one the child has, a path it lacks or an entry with no value", () => {
+  const child = {
+    component_type: "Flow",
+    id: "child",
+    nodes: [],
+    control_flow_connections: [],
+    data_flow_connections: [],
+    $referenced_components: {
+      s: { component_type: "ApiNode", id: "s", name: "s", metadata: { cinatra: { riskClass: "write" } } },
+    },
+  };
+  const group = { repository: "org/child", prefix: "p-", copyId: "copy", declared: [] };
+  const entry = (extra = {}) => ({
+    child: "org/child",
+    kind: "add-value",
+    step: "s",
+    path: "metadata.cinatra.tools",
+    value: ["a_b"],
+    reason: "probe",
+    ...extra,
+  });
+  const made = generateCopy(child, { ...group, declared: [entry()] });
+  assert.deepEqual(made.$referenced_components["p-s"].metadata.cinatra.tools, ["a_b"]);
+  assert.equal(made.$referenced_components["p-s"].metadata.cinatra.riskClass, "write");
+  assert.equal(Object.hasOwn(child.$referenced_components.s.metadata.cinatra, "tools"), false, "the child is changed");
+  const refused = (declared, text) =>
+    assert.throws(
+      () => generateCopy(child, { ...group, declared: [declared] }),
+      (error) => error.message.includes("org/child") && error.message.includes("(add-value)") && error.message.includes(text),
+      JSON.stringify(declared),
+    );
+  refused(entry({ path: "metadata.cinatra.riskClass" }), "already present");
+  refused(entry({ path: "metadata.absent.tools" }), "is absent");
+  refused(entry({ step: "absent_step" }), "is absent");
+  const { value: _value, ...noValue } = entry();
+  refused(noValue, "no value");
 });
 
 test("(7) the recipient selection copy is its child but for the declared differences", () => {

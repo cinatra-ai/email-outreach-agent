@@ -13,12 +13,14 @@
 //      nothing routes on its answer, so every other outcome has no edge to
 //      follow and the run ends at the confirmation.
 //   2. The send step's tool offer is the flow's declaration. The host reads a
-//      model-bridge step's declaration from `metadata.cinatra.tools`. This
-//      flow declares none for any step today, so the host offers each step
-//      every tool it serves. The suite pins that reading, and it reads the
-//      tool names every step's call data carries against explicit lists:
-//      a name that is not on a list fails, so a tool added to any step turns
-//      the suite red until the list names it.
+//      model-bridge step's declaration from `metadata.cinatra.tools`. The
+//      send step declares the three tools of the delivery step it is
+//      re-inlined from (the read, the send start and the send status), so the
+//      host offers it those and no other; no other step declares a list. The
+//      suite pins that reading, and it reads the tool names every step's call
+//      data carries against explicit lists: a name that is not on a list
+//      fails, so a tool added to any step turns the suite red until the list
+//      names it.
 //
 // The pins hold at the base: they guard it. Each test names the change that
 // turns it red.
@@ -228,10 +230,13 @@ function namesIn(step) {
   return [...names].sort();
 }
 
-// What the send step's text names: the read tool and nothing else. Any other
-// name fails the suite until it is listed here, and listing a tool the send
-// step may call is a change of this list.
-const SEND_STEP_NAMES = ["objects_get"];
+// What the send step's text names: the read tool, the send start tool and the
+// send status tool, and nothing else. Any other name fails the suite until it
+// is listed here, and listing a tool the send step may call is a change of
+// this list.
+const SEND_STEP_NAMES = ["email_outreach_send_initial_start", "email_outreach_send_initial_status", "objects_get"];
+// Snake_case words of the delivery step's text that are not tools.
+const SEND_STEP_CHILD_WORDS = ["agent_run", "agent_run_id", "max_steps"];
 
 // What every other model or passthrough step of the flow names today. The
 // ids are exactly the flow's ApiNode steps but the send step. A tool-shaped
@@ -308,20 +313,48 @@ test("the copy of the host's declaration reader reads the cases its rule names",
   }
 });
 
-// What this flow declares for the send step. Nothing is declared today, so
-// the host offers the step every tool it serves. This is a change detector:
-// declaring a list for the step changes this constant in the same commit.
-const SEND_STEP_DECLARATION = { kind: "undeclared" };
+// What this flow declares for the send step: the three tools of the delivery
+// step this step is re-inlined from. The step's own text names the same three
+// (SEND_STEP_NAMES), and the declaration is what limits the step's offer to
+// the read, the send start and the send status and to nothing else.
+// This is a change detector: a change of the list changes this constant in the
+// same commit.
+const SEND_STEP_DECLARED = ["email_outreach_send_initial_start", "email_outreach_send_initial_status", "objects_get"];
+const SEND_STEP_DECLARATION = { kind: "declared", tools: SEND_STEP_DECLARED };
 
-test("the send step's declaration reads as this suite pins it (a change detector: red on a `tools` key on the send step)", () => {
+test("the send step's declaration reads as this suite pins it (a change detector: red on a changed list, or on none, for the send step)", () => {
   assert.deepEqual(readDeclaration(graph.nodes.get(SEND)), SEND_STEP_DECLARATION);
 });
 
-test("when the send step declares a list it is exactly the tools its text names (vacuous while the step declares none)", () => {
+test("the send step's declared list is exactly the tools of the delivery step it is re-inlined from, and holds every tool its own text names (red: no list, a tool the delivery step calls and the list lacks, or a tool the list holds and the delivery step does not call)", () => {
   const reading = readDeclaration(graph.nodes.get(SEND));
-  if (reading.kind === "undeclared") return;
-  assert.equal(reading.kind, "declared");
-  assert.deepEqual([...reading.tools].sort(), SEND_STEP_NAMES);
+  assert.equal(reading.kind, "declared", "the send step declares no list");
+  const child = JSON.parse(readFileSync(path.join(root, "scripts/children/email-delivery-agent.oas.json"), "utf8"));
+  const childSend = child.$referenced_components.send;
+  assert.match(childSend.url, /\/api\/llm-bridge$/, "the delivery flow's send step is not a model step");
+  const needs = namesIn(childSend).filter((name) => !SEND_STEP_CHILD_WORDS.includes(name));
+  assert.deepEqual([...reading.tools].sort(), needs);
+  for (const name of SEND_STEP_NAMES) assert.ok(reading.tools.includes(name), `${name} is named by the send step and is not declared`);
+});
+
+// The steps that declare a tool list: the list step's own lookup and the send
+// step. A `tools` key on any other step is a change of this list.
+const DECLARING_STEPS = ["recipients_flow/recipients-fetch_lists", SEND];
+
+test("the send list sits on the send step only, a model step, under the id the host reads it by (red: a `tools` key on a step not in DECLARING_STEPS, or a send tool on another step's list)", () => {
+  const withKey = [...graph.nodes.entries()]
+    .filter(([, c]) => Object.hasOwn(c.metadata?.cinatra ?? {}, "tools"))
+    .map(([k]) => k);
+  assert.deepEqual(withKey, DECLARING_STEPS);
+  for (const key of withKey.filter((k) => k !== SEND)) {
+    const reading = readDeclaration(graph.nodes.get(key));
+    assert.equal(reading.kind, "declared", `${key} carries a list the host refuses`);
+    for (const name of SEND_STEP_DECLARED) assert.ok(!reading.tools.includes(name), `${key} declares the send tool ${name}`);
+  }
+  assert.match(graph.nodes.get(SEND).url, /\/api\/llm-bridge$/);
+  assert.equal(graph.nodes.get(SEND).id, "sender-send", "the host reads a declaration by the step's id");
+  const sameId = [...graph.nodes.values()].filter((c) => c.component_type === "ApiNode" && c.id === "sender-send");
+  assert.equal(sameId.length, 1, "two model steps share the send step's id");
 });
 
 test("no model step of the flow carries a declaration the host refuses", () => {
