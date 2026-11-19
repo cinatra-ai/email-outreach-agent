@@ -4,14 +4,12 @@
 // The delivery copy inside cinatra/oas.json carries the delivery agent's
 // filing step between its confirmation and its send, handed the run, the
 // confirmed recipient list and the campaign. The step calls a declared tool by
-// name, and the platform resolves that name against the manifest of the package
-// whose run calls it, so this package declares the tool itself and ships the
-// module beside its flow, byte for byte the delivery agent's module at the
-// commit scripts/embedded-copies.json pins for the delivery copy.
+// name, and the platform resolves that name of an embedded child's step against
+// the child's own installed package (the delivery agent), so this package
+// neither declares nor ships the tool.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -23,9 +21,6 @@ const pkg = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
 const deliveryFlow = oas.$referenced_components["email-delivery-subflow"];
 const FILING = "sender-file_recipients";
 const TOOL = "recipient_records";
-const MODULE = "./cinatra/tools/recipient-records.mjs";
-// The git blob of the delivery agent's module at the pinned delivery commit.
-const MODULE_BLOB = "45548ed05896f752c0cbe70a521097cb87a34a29";
 
 const refOf = (node) => (node && typeof node === "object" ? node.$component_ref : undefined);
 const hasEdge = (from, to) =>
@@ -75,24 +70,23 @@ test("(8) the filing step is handed the run, the confirmed recipient list and th
   assert.equal(step.data.input.input.recipientsRef, "{{ confirmedRecipientsRef }}");
 });
 
-test("(8) every declared tool the flow calls is declared by this package, its module shipped beside the flow", () => {
+test("(8) the recipient filing tool is the delivery agent's own, not shipped or declared by this package", () => {
   const declared = Array.isArray(pkg.cinatra.tools) ? pkg.cinatra.tools : [];
   const calls = toolCalls(oas);
   assert.ok(calls.some((c) => c.name === TOOL), `the flow calls no ${TOOL} tool`);
-  for (const call of calls) {
+  // The platform resolves the step of the embedded delivery flow against the
+  // delivery agent's own installed package, so no copy is declared here.
+  assert.ok(!declared.some((t) => t.name === TOOL), `${TOOL} is still declared by this package`);
+  assert.ok(
+    !existsSync(path.join(root, "cinatra/tools/recipient-records.mjs")),
+    "the copy of the delivery agent's module is still in the package",
+  );
+  // Every other declared tool the flow calls stays declared and shipped here.
+  for (const call of calls.filter((c) => c.name !== TOOL)) {
     assert.ok(
       declared.some((t) => t.name === call.name),
       `the step ${call.id} calls ${call.name}, which this package does not declare`,
     );
   }
-  const tool = declared.find((t) => t.name === TOOL);
-  assert.equal(tool.module, MODULE);
-  const file = path.join(root, MODULE);
-  assert.ok(existsSync(file), `${MODULE} is not in the package`);
-  const bytes = readFileSync(file);
-  const blob = createHash("sha1")
-    .update(Buffer.concat([Buffer.from(`blob ${bytes.length}\0`), bytes]))
-    .digest("hex");
-  assert.equal(blob, MODULE_BLOB, `${MODULE} is not the delivery agent's module at the pinned commit`);
   assert.ok((pkg.files ?? []).includes("cinatra"), "the package does not publish its cinatra folder");
 });
