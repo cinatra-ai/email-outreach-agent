@@ -208,7 +208,11 @@ test("(3) both reviews apply the three decisions", () => {
 // ---------------------------------------------------------------------------
 
 test("(4) the confirmation stands before the send, not after it", () => {
-  assert.ok(hasEdge(deliveryFlow, "sender-start", "sender-approval_gate"), "the run does not reach the confirmation first");
+  // The read-only prepare step stands before the confirmation: it hands the gate the
+  // content digest the send start carries (cinatra-ai/cinatra#3745). It sends nothing.
+  assert.ok(hasEdge(deliveryFlow, "sender-start", "sender-prepare"), "the run does not reach the read-only prepare step first");
+  assert.ok(hasEdge(deliveryFlow, "sender-prepare", "sender-approval_gate"), "the prepare step does not lead to the confirmation");
+  assert.equal(deliveryFlow.$referenced_components["sender-prepare"].metadata.cinatra.riskClass, "read_only");
   assert.ok(hasEdge(deliveryFlow, "sender-approval_gate", "sender-file_recipients"), "the confirmation does not gate the send");
   assert.ok(hasEdge(deliveryFlow, "sender-file_recipients", "sender-send"), "the send does not follow the recipient filing");
   assert.ok(hasEdge(deliveryFlow, "sender-send", "sender-end"));
