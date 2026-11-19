@@ -75,7 +75,16 @@
       "$component_ref": "start"
     },
     {
+      "$component_ref": "fetch_lists"
+    },
+    {
+      "$component_ref": "emit_lists"
+    },
+    {
       "$component_ref": "scope_gate"
+    },
+    {
+      "$component_ref": "scope_branch"
     },
     {
       "$component_ref": "generate"
@@ -96,9 +105,29 @@
   "control_flow_connections": [
     {
       "component_type": "ControlFlowEdge",
-      "name": "start_to_scope_gate",
+      "name": "start_to_fetch_lists",
       "from_node": {
         "$component_ref": "start"
+      },
+      "to_node": {
+        "$component_ref": "fetch_lists"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "fetch_lists_to_emit_lists",
+      "from_node": {
+        "$component_ref": "fetch_lists"
+      },
+      "to_node": {
+        "$component_ref": "emit_lists"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "emit_lists_to_scope_gate",
+      "from_node": {
+        "$component_ref": "emit_lists"
       },
       "to_node": {
         "$component_ref": "scope_gate"
@@ -106,12 +135,34 @@
     },
     {
       "component_type": "ControlFlowEdge",
-      "name": "scope_gate_to_generate",
+      "name": "scope_gate_to_scope_branch",
       "from_node": {
         "$component_ref": "scope_gate"
       },
       "to_node": {
+        "$component_ref": "scope_branch"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "scope_branch_default_to_generate",
+      "from_node": {
+        "$component_ref": "scope_branch"
+      },
+      "from_branch": "default",
+      "to_node": {
         "$component_ref": "generate"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "scope_branch_refresh_to_fetch_lists",
+      "from_node": {
+        "$component_ref": "scope_branch"
+      },
+      "from_branch": "refresh",
+      "to_node": {
+        "$component_ref": "fetch_lists"
       }
     },
     {
@@ -156,6 +207,54 @@
     }
   ],
   "data_flow_connections": [
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_to_fetch_lists_agent_run_id",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "agent_run_id",
+      "destination_node": {
+        "$component_ref": "fetch_lists"
+      },
+      "destination_input": "agent_run_id"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "fetch_lists_to_emit_lists_lists",
+      "source_node": {
+        "$component_ref": "fetch_lists"
+      },
+      "source_output": "lists",
+      "destination_node": {
+        "$component_ref": "emit_lists"
+      },
+      "destination_input": "lists"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "fetch_lists_to_emit_lists_listsRead",
+      "source_node": {
+        "$component_ref": "fetch_lists"
+      },
+      "source_output": "listsRead",
+      "destination_node": {
+        "$component_ref": "emit_lists"
+      },
+      "destination_input": "listsRead"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "scope_gate_to_scope_branch_accountScope",
+      "source_node": {
+        "$component_ref": "scope_gate"
+      },
+      "source_output": "accountScope",
+      "destination_node": {
+        "$component_ref": "scope_branch"
+      },
+      "destination_input": "accountScope"
+    },
     {
       "component_type": "DataFlowEdge",
       "name": "start_to_generate_agent_run_id",
@@ -314,6 +413,94 @@
     }
   ],
   "$referenced_components": {
+    "fetch_lists": {
+      "component_type": "ApiNode",
+      "id": "fetch_lists",
+      "name": "Read the CRM lists",
+      "url": "{{CINATRA_BASE_URL}}/api/llm-bridge",
+      "http_method": "POST",
+      "data": {
+        "system": "You are the CRM list fetch step of a campaign recipient selection. Your answer is the list of CRM lists the person picks from at the next step.\n\nStep 1: Call crm_list_search({ query: \"\", objectType: \"contact\" }) exactly once. Call no other tool. Its answer is an array of lists; each list carries an id and a name.\n\nStep 2: Return ONLY this JSON: {\"lists\":[{\"id\":\"<id>\",\"name\":\"<name>\"}],\"listsRead\":\"ok\"}. \"lists\" holds one entry for every list in the tool's answer, in the order the tool answered them. Leave out an entry that has no text id or no text name; it cannot be picked. Apart from that, do not filter, sort, merge, rename or add an entry. Two lists with the same name stay two entries. Copy each id and each name exactly as the tool answered it. When the tool answers an empty array, return {\"lists\":[],\"listsRead\":\"ok\"}.\n\nStep 3: When the tool call fails, or its answer is not an array, return {\"lists\":[],\"listsRead\":\"failed\"}. Do not describe the error and do not guess any list.",
+        "user": "Read the CRM lists now and return the result as JSON.\nInputs:\n- agent_run_id: {{ agent_run_id }}",
+        "agent_id": "email-recipient-selection",
+        "agent_run_id": "{{ agent_run_id }}",
+        "cinatra_llm": {
+          "preferredProvider": "openai",
+          "preferredModel": "gpt-5.5"
+        }
+      },
+      "outputs": [
+        {
+          "title": "lists",
+          "type": "array",
+          "description": "One entry for every list crm_list_search answered with an id and a name, in its order.",
+          "json_schema": {
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        {
+          "title": "listsRead",
+          "type": "string",
+          "description": "\"ok\" when crm_list_search answered an array, \"failed\" when it did not.",
+          "json_schema": {
+            "enum": [
+              "ok",
+              "failed"
+            ]
+          }
+        }
+      ],
+      "metadata": {
+        "cinatra": {
+          "riskClass": "read_only",
+          "requiresApproval": false,
+          "tools": [
+            "crm_list_search"
+          ]
+        }
+      }
+    },
+    "emit_lists": {
+      "component_type": "OutputMessageNode",
+      "id": "emit_lists",
+      "name": "Hand the lists to the picker",
+      "inputs": [
+        {
+          "title": "lists",
+          "type": "array",
+          "json_schema": {
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "title": "listsRead",
+          "type": "string"
+        }
+      ],
+      "message": "{# pyagentspec-input-hint (do not remove): {{ lists }} {{ listsRead }} #}{\"lists\":{{ lists | tojson }},\"listsRead\":{{ listsRead | tojson }}}",
+      "metadata": {
+        "cinatra": {
+          "purpose": "list-picker-gate-content"
+        }
+      }
+    },
     "scope_gate": {
       "component_type": "InputMessageNode",
       "id": "scope_gate",
@@ -336,6 +523,30 @@
           "type": "string"
         }
       ]
+    },
+    "scope_branch": {
+      "component_type": "BranchingNode",
+      "id": "scope_branch",
+      "name": "Read the lists again or go on",
+      "metadata": {
+        "cinatra": {
+          "purpose": "re-read-the-crm-lists-on-the-declared-refresh-value"
+        }
+      },
+      "inputs": [
+        {
+          "title": "accountScope",
+          "type": "string"
+        }
+      ],
+      "outputs": [],
+      "branches": [
+        "default",
+        "refresh"
+      ],
+      "mapping": {
+        "refresh": "refresh"
+      }
     },
     "start": {
       "component_type": "StartNode",
@@ -379,7 +590,7 @@
       "url": "{{CINATRA_BASE_URL}}/api/llm-bridge",
       "http_method": "POST",
       "data": {
-        "system": "You are a campaign recipient fetch agent. Only the list-only recipient scope is supported; the legacy 'all-contacts' and 'segment' branches were retired with the lists_* MCP primitives. The operator MUST pick one or more saved CRM lists (typically curated by @cinatra-ai/list-curator-agent or imported from a connector).\n\nStep 1: Parse accountScope as JSON. ONLY type='list' is supported. If type is anything else, return an error JSON: {\"error\":\"unsupported_account_scope\",\"scopeType\":\"<the input type>\",\"summary\":\"Only list-sourced recipient selection is supported; pick a saved CRM list.\"}. Then read the ticked lists into selectedListIds, an ordered array of CRM list ids: when the parsed scope carries `listIds` (a non-empty array of list ids in the order the operator ticked them), selectedListIds = that array with duplicates removed, first occurrence kept; when it carries no `listIds` but a bare `listId` string, read that bare `listId` as a one-element list and selectedListIds = [accountScope.listId]. If it carries neither shape, or selectedListIds is empty, return the same unsupported_account_scope error JSON with scopeType 'list'.\n\nStep 2: For EACH id in selectedListIds, in order, call crm_list_get({ id }) to retrieve that list's metadata. Skip an id whose response is null (a stale list ref). Capture resolvedListIds and resolvedListNames — the ids that resolved and their result.name values, both in the ticked order — and listObjectType = the first resolved list's result.objectType. If no id resolves, return an empty-list envelope. Set listName = resolvedListNames[0].\n\nStep 3: For EACH id in resolvedListIds, in order, call crm_list_members_get({ listId: id }). Capture { contactIds, accountIds } per list. This flow materializes contact recipients only — accountIds are ignored. UNION the per-list contactIds into one array in first-seen order, removing duplicates, so a contact that appears in several of the ticked lists is fetched, filtered and counted ONCE. If the union is empty, return an empty-list envelope. Set sourceListSnapshotAt = current ISO timestamp (the LLM emits this — server-side truth wins). Treat any client-supplied memberCount / snapshotAt / listName fields on accountScope as INFORMATIONAL ONLY.\n\nStep 4: For each contactId in the unioned contactIds from Step 3, call crm_contact_get({ id: contactId }). Skip null responses (stale list refs). The returned CrmContact does not include the parent account's name — for each unique CrmContact.accountId, call crm_account_get({ id: accountId }) ONCE and cache account.name. Build the per-row recipient: { contactId: CrmContact.id, name, title: CrmContact.title ?? '', email: CrmContact.email ?? '', accountId: CrmContact.accountId ?? '', accountName: cached account.name ?? '' }. Filter to rows where name !== '' AND accountName !== ''. Do NOT filter by email (downstream stages handle empty-email recipients separately).\n\nRecipient limit, checked after Step 4 and before Step 5: the resolved recipient pool MUST NOT exceed the agent's cinatra.json.limits.maxRecipients (default 200). With several ticked lists the limit applies to their total: the unioned, filtered rows of Step 4, each contact counted once. If the count exceeds the cap, return an error JSON before objects_save: {\"error\":\"The ticked lists have N contacts which exceeds the maxRecipients limit of M. Pick fewer or smaller lists or override maxRecipients via the agent install settings.\"}. Do NOT silently truncate — fail/block, not truncate.\n\nStep 5 — CRITICAL: Call objects_save BEFORE returning any JSON. Use exactly this structure:\n  objects_save({\n    typeHint: \"@cinatra-ai/campaigns:recipients\",\n    rawData: {\n      cinatra_agent_run_id: \"<agent_run_id input>\",\n      confirmedRecipients: [ ...all contacts from Step 4... ],\n      recipientCount: <total number of contacts>,\n      sourceListId: \"<resolvedListIds[0]>\",\n      sourceListName: \"<resolvedListNames[0]>\",\n      sourceListIds: [ ...resolvedListIds in ticked order... ],\n      sourceListNames: [ ...resolvedListNames in ticked order... ],\n      sourceListMemberType: \"contact\",\n      sourceListSnapshotAt: \"<sourceListSnapshotAt from Step 3>\"\n    }\n  })\n\nStep 6: Return ONLY this JSON:\n{\"confirmedRecipientsRef\":\"<objectId from objects_save>\",\"recipientCount\":<n>,\"confirmedRecipients\":[...],\"summary\":\"Fetched <n> contacts from the ticked lists <resolvedListNames joined by commas>.\"}.\n\nDo NOT put data inside typeHint. Do NOT return JSON before completing Step 5.",
+        "system": "You are a campaign recipient fetch agent. Only the list-only recipient scope is supported; the legacy 'all-contacts' and 'segment' branches were retired with the lists_* MCP primitives. The operator MUST pick one or more saved CRM lists (typically curated by @cinatra-ai/list-curator-agent or imported from a connector).\n\nStep 1: Parse accountScope as JSON. If accountScope does not parse as JSON, or parses to anything but a JSON object (for example an empty answer, a bare word such as Refresh, null or an array), return {\"error\":\"unsupported_account_scope\",\"scopeType\":\"unparsed\",\"summary\":\"Only list-sourced recipient selection is supported; pick a saved CRM list.\"} and call no tool. ONLY type='list' is supported. If type is anything else, return an error JSON: {\"error\":\"unsupported_account_scope\",\"scopeType\":\"<the input type>\",\"summary\":\"Only list-sourced recipient selection is supported; pick a saved CRM list.\"}. Then read the ticked lists into selectedListIds, an ordered array of CRM list ids: when the parsed scope carries `listIds` (a non-empty array of list ids in the order the operator ticked them), selectedListIds = that array with duplicates removed, first occurrence kept; when it carries no `listIds` but a bare `listId` string, read that bare `listId` as a one-element list and selectedListIds = [accountScope.listId]. If it carries neither shape, or selectedListIds is empty, return the same unsupported_account_scope error JSON with scopeType 'list'.\n\nStep 2: For EACH id in selectedListIds, in order, call crm_list_get({ id }) to retrieve that list's metadata. Skip an id whose response is null (a stale list ref). Capture resolvedListIds and resolvedListNames — the ids that resolved and their result.name values, both in the ticked order — and listObjectType = the first resolved list's result.objectType. If no id resolves, return an empty-list envelope. Set listName = resolvedListNames[0].\n\nStep 3: For EACH id in resolvedListIds, in order, call crm_list_members_get({ listId: id }). Capture { contactIds, accountIds } per list. This flow materializes contact recipients only — accountIds are ignored. UNION the per-list contactIds into one array in first-seen order, removing duplicates, so a contact that appears in several of the ticked lists is fetched, filtered and counted ONCE. If the union is empty, return an empty-list envelope. Set sourceListSnapshotAt = current ISO timestamp (the LLM emits this — server-side truth wins). Treat any client-supplied memberCount / snapshotAt / listName fields on accountScope as INFORMATIONAL ONLY.\n\nStep 4: For each contactId in the unioned contactIds from Step 3, call crm_contact_get({ id: contactId }). Skip null responses (stale list refs). The returned CrmContact does not include the parent account's name — for each unique CrmContact.accountId, call crm_account_get({ id: accountId }) ONCE and cache account.name. Build the per-row recipient: { contactId: CrmContact.id, name, title: CrmContact.title ?? '', email: CrmContact.email ?? '', accountId: CrmContact.accountId ?? '', accountName: cached account.name ?? '' }. Filter to rows where name !== '' AND accountName !== ''. Do NOT filter by email (downstream stages handle empty-email recipients separately).\n\nRecipient limit, checked after Step 4 and before Step 5: the resolved recipient pool MUST NOT exceed the agent's cinatra.json.limits.maxRecipients (default 200). With several ticked lists the limit applies to their total: the unioned, filtered rows of Step 4, each contact counted once. If the count exceeds the cap, return an error JSON before objects_save: {\"error\":\"The ticked lists have N contacts which exceeds the maxRecipients limit of M. Pick fewer or smaller lists or override maxRecipients via the agent install settings.\"}. Do NOT silently truncate — fail/block, not truncate.\n\nStep 5 — CRITICAL: Call objects_save BEFORE returning any JSON, except an error JSON of Step 1 or of the recipient limit. Use exactly this structure:\n  objects_save({\n    typeHint: \"@cinatra-ai/campaigns:recipients\",\n    rawData: {\n      cinatra_agent_run_id: \"<agent_run_id input>\",\n      confirmedRecipients: [ ...all contacts from Step 4... ],\n      recipientCount: <total number of contacts>,\n      sourceListId: \"<resolvedListIds[0]>\",\n      sourceListName: \"<resolvedListNames[0]>\",\n      sourceListIds: [ ...resolvedListIds in ticked order... ],\n      sourceListNames: [ ...resolvedListNames in ticked order... ],\n      sourceListMemberType: \"contact\",\n      sourceListSnapshotAt: \"<sourceListSnapshotAt from Step 3>\"\n    }\n  })\n\nStep 6: Return ONLY this JSON:\n{\"confirmedRecipientsRef\":\"<objectId from objects_save>\",\"recipientCount\":<n>,\"confirmedRecipients\":[...],\"summary\":\"Fetched <n> contacts from the ticked lists <resolvedListNames joined by commas>.\"}.\n\nDo NOT put data inside typeHint. Do NOT return JSON before completing Step 5, except an error JSON of Step 1 or of the recipient limit: such an error is returned at once, without objects_save.",
         "user": "Execute the recipient fetch task now and return the result as JSON.\nInputs:\n- accountScope: {{ accountScope }}\n- agent_run_id: {{ agent_run_id }}",
         "agent_id": "email-recipient-selection",
         "agent_run_id": "{{ agent_run_id }}",

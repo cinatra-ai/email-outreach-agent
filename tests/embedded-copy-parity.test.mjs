@@ -218,3 +218,24 @@ test("(7) the parent hands each copy only inputs it takes and reads only outputs
   }
   assert.deepEqual(problems, []);
 });
+
+// The declared list leaves the child's recipient limit paragraph out of the
+// recipient fetch prompt, because the outreach declares no recipient limit. The
+// prompt then must not name that limit anywhere else either: a reference to an
+// omitted rule is a road the prompt no longer defines.
+test("(7) the recipient fetch prompt names no recipient limit that the copy omits", () => {
+  const index = groupFor("email-recipient-selection-subflow");
+  const group = list[index];
+  assert.ok(
+    group.declared.some((e) => e.kind === "omit-text" && e.step === "generate" && /Recipient limit/.test(e.text)),
+    "the declared list no longer omits the recipient limit paragraph",
+  );
+  const generated = generateCopy(children[index], group);
+  const committed = flow.$referenced_components["email-recipient-selection-subflow"];
+  for (const [label, copy] of [["generated", generated], ["committed", committed]]) {
+    const system = copy.$referenced_components["recipients-generate"]?.data?.system;
+    assert.equal(typeof system, "string", `the ${label} copy has no recipient fetch prompt`);
+    assert.ok(!/recipient limit|maxRecipients/i.test(system), `the ${label} recipient fetch prompt still names the recipient limit`);
+    assert.ok(system.includes("except an error JSON of Step 1"), `the ${label} prompt lost the Step 1 error exception`);
+  }
+});

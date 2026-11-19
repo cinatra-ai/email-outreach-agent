@@ -246,6 +246,7 @@ const SEND_STEP_CHILD_WORDS = ["agent_run", "agent_run_id", "max_steps"];
 // name that is not on this list.
 const OTHER_STEP_NAMES = table({
   "context_setup": ["email_outreach_context_setup", "objects_save"],
+  "recipients_flow/recipients-fetch_lists": ["agent_run_id", "crm_list_search"],
   "recipients_flow/recipients-generate": [
     "agent_run_id",
     "cinatra_agent_run_id",
@@ -339,11 +340,20 @@ test("the send step's declared list is exactly the tools of the delivery step it
   for (const name of SEND_STEP_NAMES) assert.ok(reading.tools.includes(name), `${name} is named by the send step and is not declared`);
 });
 
-test("the list sits on the send step only, a model step, under the id the host reads it by (red: a `tools` key on another step)", () => {
+// The steps that declare a tool list: the list step's own lookup and the send
+// step. A `tools` key on any other step is a change of this list.
+const DECLARING_STEPS = ["recipients_flow/recipients-fetch_lists", SEND];
+
+test("the send list sits on the send step only, a model step, under the id the host reads it by (red: a `tools` key on a step not in DECLARING_STEPS, or a send tool on another step's list)", () => {
   const withKey = [...graph.nodes.entries()]
     .filter(([, c]) => Object.hasOwn(c.metadata?.cinatra ?? {}, "tools"))
     .map(([k]) => k);
-  assert.deepEqual(withKey, [SEND]);
+  assert.deepEqual(withKey, DECLARING_STEPS);
+  for (const key of withKey.filter((k) => k !== SEND)) {
+    const reading = readDeclaration(graph.nodes.get(key));
+    assert.equal(reading.kind, "declared", `${key} carries a list the host refuses`);
+    for (const name of SEND_STEP_DECLARED) assert.ok(!reading.tools.includes(name), `${key} declares the send tool ${name}`);
+  }
   assert.match(graph.nodes.get(SEND).url, /\/api\/llm-bridge$/);
   assert.equal(graph.nodes.get(SEND).id, "sender-send", "the host reads a declaration by the step's id");
   const sameId = [...graph.nodes.values()].filter((c) => c.component_type === "ApiNode" && c.id === "sender-send");
