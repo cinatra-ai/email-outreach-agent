@@ -77,10 +77,6 @@
     "toolAccess": [],
     "tools": [
       {
-        "name": "recipient_records",
-        "module": "./cinatra/tools/recipient-records.mjs"
-      },
-      {
         "name": "saved_drafts",
         "module": "./cinatra/tools/saved-drafts.mjs"
       }
