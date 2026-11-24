@@ -691,7 +691,8 @@
       },
       "metadata": {
         "cinatra": {
-          "packageName": "@cinatra-ai/email-delivery-agent"
+          "packageName": "@cinatra-ai/email-delivery-agent",
+          "publishes": true
         }
       }
     },
