@@ -282,6 +282,47 @@ describe("the list step, mounted", () => {
     }
   });
 
+  it("reopened on a completed step, draws the recorded picks by name and no failed-read alert", async () => {
+    const note = { type: "list", listIds: ["view-b", "view-a"], listNames: ["Trade fair leads", ""], snapshotAt: "2026-11-24T00:00:00.000Z" };
+    const readings = {
+      "the write": { listIds: ["view-b", "view-a"], listNames: ["Trade fair leads", ""] },
+      "the lifted note": note,
+      "the lifted note as JSON text": JSON.stringify(note),
+      "the recorded values with the note": {
+        listIds: ["view-b", "view-a"],
+        listNames: ["Trade fair leads", ""],
+        approved: true,
+        approvedAt: "2026-11-24T00:00:00.000Z",
+        approvalNote: JSON.stringify(note),
+      },
+      "only the note under approvalNote": { approved: true, approvalNote: JSON.stringify(note) },
+    };
+    for (const [label, value] of Object.entries(readings)) {
+      const view = await mount({ value, mode: "view", disabled: true });
+      try {
+        const text = view.container.textContent;
+        assert.equal(text.includes("Trade fair leads"), true, `${label}: the picked name`);
+        assert.equal(text.includes("view-a"), true, `${label}: the id for a blank name`);
+        assert.equal(view.container.querySelector('[role="alert"]'), null, `${label}: an alert`);
+        assert.equal(view.container.querySelector('[data-testid="list-picker-try-again"]'), null, `${label}: Try again`);
+        assert.equal(text.includes("could not be read"), false, `${label}: the failed-read words`);
+        const ticks = boxes(view.container);
+        assert.equal(ticks.length, 2, `${label}: one row per pick`);
+        assert.equal(ticks.every((box) => box.checked && box.disabled), true, `${label}: ticked and disabled`);
+        assert.equal(
+          view.container.querySelector('[data-conformance-id="run-list-step-multi-pick"]') !== null,
+          true,
+          `${label}: the conformance root`,
+        );
+        await click(ticks[0]);
+        assert.deepEqual(view.writes, [], `${label}: a write`);
+        assert.deepEqual(view.reports, [], `${label}: a report`);
+      } finally {
+        await view.unmount();
+      }
+    }
+  });
+
   it("reports once per change, not again on a re-render", async () => {
     const view = await mount({ value: { lists: LISTS, listsRead: "ok" } });
     try {

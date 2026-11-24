@@ -62,6 +62,18 @@ import { createElement, useEffect, useRef, useState, type ReactNode } from "reac
 // as declared (or, for a failed read, its one failed-read alert), no row and
 // no link, and Try again when the binding declares a refresh value.
 //
+// A COMPLETED STEP, REOPENED. On `mode="view"` the value may be the step's
+// recorded answer rather than its input: the write `{ listIds, listNames }`,
+// the host's lifted note `{ type: "list", listIds, listNames, snapshotAt }`, or
+// the recorded Continue values that carry that note as JSON text under
+// `approvalNote` (cinatra-ai/cinatra packages/agents/src/orchestrator-stepper-panel.tsx
+// ReadOnlyHitlReplay hands the recorded values as they are). Any of them may
+// arrive as JSON text. The step then draws the recorded picks as read-only
+// rows, ticked, each by its name, or by its id when the name is blank; it
+// never draws the failed-read alert or Try again for a recorded answer. The
+// design (specs/app-artifact-review.html I.1) draws no separate completed
+// state, so the rows keep the pick's own markup with the inputs disabled.
+//
 // The root element carries `data-conformance-id="run-list-step-multi-pick"`,
 // the design example this step implements, for the shared UI grader.
 //
@@ -91,6 +103,9 @@ const FAILED_READ_READING = "This list could not be read.";
 
 const TRY_AGAIN_WORDS = "Try again";
 
+/** What a reopened step says when its recorded answer holds no pick. */
+const NOTHING_PICKED_READING = "No list was picked on this step.";
+
 /** The design example this component implements (design specs/app-artifact-review.html I.1). */
 export const CONFORMANCE_ID = "run-list-step-multi-pick";
 
@@ -106,6 +121,44 @@ function readContent(value: unknown): { lists?: unknown; listsRead?: unknown } |
   }
   if (content === null || typeof content !== "object" || Array.isArray(content)) return null;
   return content as { lists?: unknown; listsRead?: unknown };
+}
+
+/** A value read as an object (JSON text is parsed), else null. */
+function objectOf(value: unknown): Record<string, unknown> | null {
+  let content = value;
+  if (typeof content === "string") {
+    try {
+      content = JSON.parse(content);
+    } catch {
+      return null;
+    }
+  }
+  if (content === null || typeof content !== "object" || Array.isArray(content)) return null;
+  return content as Record<string, unknown>;
+}
+
+/**
+ * The picks a recorded answer holds, in their order, else null when the value
+ * is no recorded answer. A recorded answer is an object with a `listIds` array
+ * (the write, or the host's lifted note), or one whose `approvalNote` is such
+ * an object or its JSON text. Each usable id counts once; its name is the
+ * recorded name at the same place, or the id when that name is blank.
+ */
+export function recordedPicks(value: unknown): OfferedList[] | null {
+  const outer = objectOf(value);
+  if (outer === null) return null;
+  const answer = Array.isArray(outer.listIds) ? outer : objectOf(outer.approvalNote);
+  if (answer === null || !Array.isArray(answer.listIds)) return null;
+  const names = Array.isArray(answer.listNames) ? answer.listNames : [];
+  const seen = new Set<string>();
+  const picks: OfferedList[] = [];
+  (answer.listIds as unknown[]).forEach((id, index) => {
+    if (typeof id !== "string" || id.trim().length === 0 || seen.has(id)) return;
+    seen.add(id);
+    const name = names[index];
+    picks.push({ id, name: typeof name === "string" && name.trim().length > 0 ? name : id });
+  });
+  return picks;
 }
 
 /** Whether the step's content reports a list read that succeeded (`listsRead: "ok"`). */
@@ -209,6 +262,38 @@ export default function ListPickerRenderer(props: ListPickerProps) {
 
   const root = (...children: ReactNode[]) =>
     createElement("div", { "data-conformance-id": CONFORMANCE_ID, "data-testid": "list-picker-step" }, ...children);
+
+  const recorded = props.mode === "view" ? recordedPicks(props.value) : null;
+  if (recorded !== null) {
+    if (recorded.length === 0) {
+      return root(header, createElement("p", { role: "status", className: "text-sm text-foreground" }, NOTHING_PICKED_READING));
+    }
+    return root(
+      header,
+      createElement(
+        "div",
+        { className: "grid gap-2", role: "group", "aria-label": question ?? "Lists", "data-testid": "list-picker-recorded" },
+        recorded.map((list) =>
+          createElement(
+            "label",
+            { key: list.id, className: `${ROW_CLASSES} pointer-events-none opacity-60` },
+            createElement("input", {
+              type: "checkbox",
+              className: CHECKBOX_CLASSES,
+              checked: true,
+              disabled: true,
+              readOnly: true,
+            }),
+            createElement(
+              "span",
+              { className: "min-w-0 flex-1 font-sans text-[13px] font-bold text-foreground" },
+              list.name,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   if (lists.length === 0) {
     const refreshValue = declaredWords(props.bindingParams, "refreshValue");
