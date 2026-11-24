@@ -98,15 +98,53 @@ function walkRefs(node, visit) {
   for (const value of Object.values(node)) walkRefs(value, visit);
 }
 
+const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+
+/** The ways a step's `data` text may be written: its indentation, whether the
+ * characters above U+007E are \u escapes, and whether a newline closes it. */
+const TEXT_FORMS = [undefined, 2, 4, "\t"].flatMap((indent) =>
+  [false, true].flatMap((escaped) => ["", "\n"].map((tail) => ({ indent, escaped, tail }))),
+);
+
+function textIn(value, form) {
+  let text = JSON.stringify(value, null, form.indent);
+  if (form.escaped) {
+    text = text.replace(/[\u007f-\uffff]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
+  }
+  return text + form.tail;
+}
+
 /**
  * A filing step (artifact_materialize) names its own step id in its input:
  * the host requires `data.input.node_id` to equal the ApiNode's id, because it
  * is the step's idempotency identity. When the step id changes, that input
- * changes with it.
+ * changes with it. The step's `data` is an object or a JSON text (the kind
+ * check reads both; its `input` must be an object). A text is written back in
+ * the form it was read in, and only when its node_id moves; a text that
+ * cannot be read, or written back in that form, fails and names the step.
  */
-function moveStepId(step, to) {
-  const input = step.data?.tool === "artifact_materialize" ? step.data.input : null;
-  if (input && typeof input === "object" && input.node_id === step.id) input.node_id = to;
+function moveStepId(step, to, fail) {
+  const text = typeof step.data === "string" ? step.data : null;
+  let data = step.data;
+  if (text !== null) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      fail(`step '${step.id}' carries its data as a text that does not parse`);
+    }
+  }
+  if (isObject(data) && data.tool === "artifact_materialize") {
+    if (!isObject(data.input)) fail(`step '${step.id}' is a filing step whose input is not an object`);
+    if (data.input.node_id === step.id) {
+      let form;
+      if (text !== null) {
+        form = TEXT_FORMS.find((candidate) => textIn(data, candidate) === text);
+        if (!form) fail(`step '${step.id}' carries its data in a form that cannot be written back unchanged`);
+      }
+      data.input.node_id = to;
+      if (text !== null) step.data = textIn(data, form);
+    }
+  }
   if (step.name === step.id) step.name = to;
   step.id = to;
 }
@@ -274,7 +312,7 @@ function applyEntry(flow, entry, fail) {
       const renamed = {};
       for (const [key, value] of Object.entries(rc)) renamed[key === entry.step ? entry.to : key] = value;
       flow.$referenced_components = renamed;
-      moveStepId(step, entry.to);
+      moveStepId(step, entry.to, fail);
       const token = new RegExp(`(^|_to_)${escapeRegExp(entry.step)}(?=_|$)`, "g");
       for (const edge of [...flow.control_flow_connections, ...flow.data_flow_connections]) {
         if (edgeTouches(edge, entry.step)) edge.name = edge.name.replace(token, `$1${entry.to}`);
@@ -287,10 +325,10 @@ function applyEntry(flow, entry, fail) {
   }
 }
 
-function prefixFlow(flow, prefix) {
+function prefixFlow(flow, prefix, fail) {
   const refs = {};
   for (const [key, step] of Object.entries(flow.$referenced_components)) {
-    moveStepId(step, prefix + step.id);
+    moveStepId(step, prefix + step.id, fail);
     refs[prefix + key] = step;
   }
   flow.$referenced_components = refs;
@@ -312,7 +350,9 @@ export function generateCopy(child, group) {
     if (typeof entry.reason !== "string" || entry.reason.trim() === "") fail("it carries no reason");
     applyEntry(flow, entry, fail);
   });
-  prefixFlow(flow, group.prefix);
+  prefixFlow(flow, group.prefix, (why) => {
+    throw new Error(`${group.repository}: ${why}`);
+  });
   flow.id = group.copyId;
   return flow;
 }
