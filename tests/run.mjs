@@ -30,3 +30,5 @@ import "./list-picker-renderer.test.mjs";
 import "./list-picker-offered-lists.test.mjs";
 import "./send-follows-the-confirmation.test.mjs";
 import "./send-step-runs-the-confirmed-send.test.mjs";
+import "./send-carries-the-confirmed-arguments.test.mjs";
+import "./prepare-texts-match-the-copy.test.mjs";

@@ -214,9 +214,9 @@
     "prefix": "sender-",
     "package": "@cinatra-ai/email-delivery-agent",
     "repository": "cinatra-ai/email-delivery-agent",
-    "commit": "a5eb814aedde4e5e8321a222e08de8b20430fb83",
+    "commit": "17d3d7838b0ce5c36d746056ab84ab292cf2ac5f",
     "snapshot": "scripts/children/email-delivery-agent.oas.json",
-    "blob": "e0294d9e0c8504dac7bff3b4f7385125e5fdd59c",
+    "blob": "0c8fca30152b8d5379585df6afdb93857b9d678a",
     "declared": [
       {
         "child": "cinatra-ai/email-delivery-agent",
@@ -232,9 +232,34 @@
       },
       {
         "child": "cinatra-ai/email-delivery-agent",
-        "kind": "omit-step",
+        "kind": "omit-key",
         "step": "prepare",
-        "reason": "The child's own read-only pre-send summary; the outreach's confirmation shows the campaign and the mailbox only."
+        "path": "data.cinatra_llm",
+        "reason": "The outreach's steps keep the model preference they have today."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "omit-text",
+        "step": "prepare",
+        "path": "data.system",
+        "text": " This step exists so the operator can review the REAL recipient/draft counts at the confirmation gate before approving the send.",
+        "reason": "The copy keeps the prepare step for the content digest only: its summary is not handed to the confirmation, so the step does not say that the operator sees it there."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "omit-text",
+        "step": "prepare",
+        "path": "outputs.0.description",
+        "text": "The pre-send summary the confirmation gate surfaces. ",
+        "reason": "The copy keeps the prepare step for the content digest only: its summary is not handed to the confirmation, so the step does not say that the operator sees it there."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "omit-text",
+        "step": "prepare",
+        "path": "metadata.cinatra.description",
+        "text": " Its summary is what the confirmation gate surfaces to the operator.",
+        "reason": "The copy keeps the prepare step for the content digest only: its summary is not handed to the confirmation, so the step does not say that the operator sees it there."
       },
       {
         "child": "cinatra-ai/email-delivery-agent",
@@ -247,21 +272,14 @@
         "kind": "omit-input",
         "step": "approval_gate",
         "input": "summary",
-        "reason": "Fed only by the prepare step, which this list leaves out."
-      },
-      {
-        "child": "cinatra-ai/email-delivery-agent",
-        "kind": "control-edge",
-        "from": "start",
-        "to": "approval_gate",
-        "reason": "Joins the steps that the prepare and closing-sentence entries leave out."
+        "reason": "The outreach's confirmation is not handed the prepare step's summary, so its Recipients and Drafts rows show a dash and not a count, as they do today."
       },
       {
         "child": "cinatra-ai/email-delivery-agent",
         "kind": "control-edge",
         "from": "send",
         "to": "end",
-        "reason": "Joins the steps that the prepare and closing-sentence entries leave out."
+        "reason": "Joins the send to the copy's end: the child's closing sentence is left out, and the outreach runs its own campaign summary after the copy."
       },
       {
         "child": "cinatra-ai/email-delivery-agent",
@@ -273,22 +291,10 @@
       },
       {
         "child": "cinatra-ai/email-delivery-agent",
-        "kind": "add-value",
-        "step": "send",
-        "path": "metadata.cinatra.tools",
-        "value": [
-          "email_outreach_send_initial_start",
-          "email_outreach_send_initial_status",
-          "objects_get"
-        ],
-        "reason": "The outreach's send offers the model the tools of the delivery step it is generated from, the read, the send start and the send status, and no other; the delivery flow at the pinned commit declares no list."
-      },
-      {
-        "child": "cinatra-ai/email-delivery-agent",
         "kind": "copy-value",
         "step": "send",
         "path": "data.system",
-        "value": "You are the email campaign sender. The person has already confirmed this send at the send-confirmation gate, which stands before this step. Do not ask for another confirmation, and do not wait for one. Your one task is to run the confirmed send and report its result.\n\n1. You may read the two references, at most once each: objects_get({ objectId: confirmedRecipientsRef }) for the confirmed recipients and objects_get({ objectId: approvedDraftBundleRef }) for the approved draft bundle. If a reference is missing or has the wrong typeHint, do not call the start tool: your final answer has \"status\": \"failed\" and a summary that names the reference that could not be read.\n\n2. Call email_outreach_send_initial_start exactly once, with campaignId, approvedDraftBundleRef and confirmedRecipientsRef. Leave out senderEmail when it is empty; pass it only when it is not empty. Never call the start tool a second time. If the start call returns an error instead of a result, the send failed: do not poll, and your final answer has \"status\": \"failed\" and a summary that says the send could not be started.\n\n3. If the start result's status is \"completed\" or \"failed\", use it and do not poll. Only when it is neither, call email_outreach_send_initial_status with { campaignId }, at most 2 times, and stop at the first \"completed\" or \"failed\".\n\n4. If the polls end without \"completed\" or \"failed\", the send failed: your final answer has \"status\": \"failed\", \"errorCode\": \"POLL_BUDGET_EXHAUSTED\" and a summary that says the result of the send could not be confirmed.\n\n5. End with one final answer that is only the JSON {\"sendResult\": {\"status\": \"completed\" | \"failed\", \"errorCode\": \"POLL_BUDGET_EXHAUSTED\" | \"\", \"summary\": \"<one sentence: how many messages went out, or what stopped the send>\"}}, with no prose and no Markdown. All three members are always present. Use \"status\": \"completed\" only when the start or status result was \"completed\", and \"status\": \"failed\" for every send that did not complete. Use \"errorCode\": \"POLL_BUDGET_EXHAUSTED\" only when the polls ended without \"completed\" or \"failed\"; in every other final answer, errorCode is the empty string. The summary is one sentence.",
+        "value": "You are the email campaign sender. The person has already confirmed this send at the send-confirmation gate, which stands before this step. Do not ask for another confirmation, and do not wait for one. Your one task is to run the confirmed send and report its result.\n\n1. You may read the two references, at most once each: objects_get({ objectId: confirmedRecipientsRef }) for the confirmed recipients and objects_get({ objectId: approvedDraftBundleRef }) for the approved draft bundle. If a reference is missing or has the wrong typeHint, do not call the start tool: your final answer has \"status\": \"failed\" and a summary that names the reference that could not be read.\n\n2. Call email_outreach_send_initial_start exactly once, with exactly these five arguments and no other key: campaignId, senderEmail, approvedDraftBundleRef, confirmedRecipientsRef and contentDigest. Pass every value exactly as the input gives it, character for character: these are the values the person confirmed at the gate, and the send is refused when a key is missing, added or changed. When an input is empty, pass JSON null for that key, because the gate carries an empty value as null; never leave a key out and never fill in a value of your own. Never call the start tool a second time. If the start call returns an error instead of a result, the send failed: do not poll, and your final answer has \"status\": \"failed\" and a summary that says the send could not be started.\n\n3. If the start result's status is \"completed\" or \"failed\", use it and do not poll. Only when it is neither, call email_outreach_send_initial_status with { campaignId }, at most 2 times, and stop at the first \"completed\" or \"failed\".\n\n4. If the polls end without \"completed\" or \"failed\", the send failed: your final answer has \"status\": \"failed\", \"errorCode\": \"POLL_BUDGET_EXHAUSTED\" and a summary that says the result of the send could not be confirmed.\n\n5. End with one final answer that is only the JSON {\"sendResult\": {\"status\": \"completed\" | \"failed\", \"errorCode\": \"POLL_BUDGET_EXHAUSTED\" | \"\", \"summary\": \"<one sentence: how many messages went out, or what stopped the send>\"}}, with no prose and no Markdown. All three members are always present. Use \"status\": \"completed\" only when the start or status result was \"completed\", and \"status\": \"failed\" for every send that did not complete. Use \"errorCode\": \"POLL_BUDGET_EXHAUSTED\" only when the polls ended without \"completed\" or \"failed\"; in every other final answer, errorCode is the empty string. The summary is one sentence.",
         "reason": "The child's send text returns a seven-member result and carries notes about its own road; the outreach's send runs the same confirmed send with the same read, start and status tools, writes its own poll limit and failure shapes, and returns the status and summary that its campaign ending reads, with an errorCode that names a send whose result could not be confirmed."
       },
       {
@@ -296,7 +302,7 @@
         "kind": "copy-value",
         "step": "send",
         "path": "data.user",
-        "value": "The person confirmed this send at the send-confirmation gate. Run the campaign send now and return the result as JSON.\nInputs:\n- campaignId: {{ campaignId }}\n- approvedDraftBundleRef: {{ approvedDraftBundleRef }}\n- confirmedRecipientsRef: {{ confirmedRecipientsRef }}\n- senderEmail: {{ senderEmail }}",
+        "value": "The person confirmed this send at the send-confirmation gate. Run the campaign send now and return the result as JSON.\nInputs:\n- campaignId: {{ campaignId }}\n- approvedDraftBundleRef: {{ approvedDraftBundleRef }}\n- confirmedRecipientsRef: {{ confirmedRecipientsRef }}\n- senderEmail: {{ senderEmail }}\n- contentDigest: {{ contentDigest }}",
         "reason": "The child's send text returns a seven-member result and carries notes about its own road; the outreach's send runs the same confirmed send with the same read, start and status tools, writes its own poll limit and failure shapes, and returns the status and summary that its campaign ending reads, with an errorCode that names a send whose result could not be confirmed."
       },
       {
