@@ -7,15 +7,23 @@
 // be sent: `false` while nothing is ticked, so the application keeps the step's
 // Continue unavailable, and `true` from the first tick. Each tick or untick
 // writes `{ listIds, listNames }` in the order ticked. With no list to pick it
-// draws the empty-state message the binding declared, and no row and no link.
+// draws the empty-state message the binding declared (or, for a failed read,
+// the step's one failed-read alert), no row and no link, and Try again, which
+// writes the declared refresh value so the flow reads the lists again.
+//
+// The last suite reproduces the host's lift of that write into the gate's
+// answer and checks the lifted answer against the gate and the generation step
+// in cinatra/oas.json.
 //
 // The arms mount the component in a document (react-dom and jsdom are dev
 // dependencies of this package) and record every write and every report.
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { after, before, describe, it } from "node:test";
 
 const ENTRY_URL = new URL("../src/renderers/list-picker.ts", import.meta.url);
+const OAS = JSON.parse(readFileSync(new URL("../cinatra/oas.json", import.meta.url), "utf8"));
 
 const PARAMS = {
   selection: "multiple",
@@ -147,17 +155,84 @@ describe("the list step, mounted", () => {
     }
   });
 
-  it("an empty list draws the declared message, no row and no link, and holds the step", async () => {
+  it("an empty list draws the declared message, no row and no link, Try again, and holds the step", async () => {
     const view = await mount({ value: { lists: [], listsRead: "ok" } });
     try {
       assert.equal(boxes(view.container).length, 0);
       assert.equal(view.container.querySelectorAll("a, [href]").length, 0);
       const status = view.container.querySelector('[role="status"]');
       assert.equal(status?.textContent, PARAMS.emptyState);
+      assert.equal(view.container.querySelector('[role="alert"]'), null, "an empty read is drawn as a failure");
+      assert.ok(view.container.querySelector('[data-testid="list-picker-try-again"]'), "no recovery offered");
       assert.deepEqual(view.writes, []);
       assert.deepEqual(view.reports, [false]);
     } finally {
       await view.unmount();
+    }
+  });
+
+  it("a failed read draws the one failed-read alert with Try again, never the empty message", async () => {
+    for (const value of [
+      { lists: [], listsRead: "failed" },
+      JSON.stringify({ lists: [], listsRead: "failed" }),
+      { lists: LISTS },
+      "not json",
+    ]) {
+      const view = await mount({ value });
+      try {
+        assert.equal(boxes(view.container).length, 0);
+        const alert = view.container.querySelector('[role="alert"]');
+        assert.ok(alert, `no alert for ${JSON.stringify(value)}`);
+        assert.equal(alert.textContent.includes("This list could not be read."), true);
+        assert.equal(view.container.textContent.includes(PARAMS.emptyState), false);
+        assert.ok(alert.querySelector('[data-testid="list-picker-try-again"]'), "no Try again in the alert");
+        assert.deepEqual(view.reports, [false]);
+      } finally {
+        await view.unmount();
+      }
+    }
+  });
+
+  it("Try again writes the declared refresh value and keeps Continue unavailable", async () => {
+    for (const listsRead of ["ok", "failed"]) {
+      const view = await mount({ value: { lists: [], listsRead } });
+      try {
+        await click(view.container.querySelector('[data-testid="list-picker-try-again"]'));
+        assert.deepEqual(view.writes, [{ listIds: [], listNames: [], refresh: PARAMS.refreshValue }]);
+        assert.deepEqual(view.reports, [false], "the press reports the step sendable");
+      } finally {
+        await view.unmount();
+      }
+    }
+  });
+
+  it("offers no Try again without a declared refresh value, or on a read-only reading", async () => {
+    const readings = [
+      { bindingParams: { ...PARAMS, refreshValue: undefined } },
+      { mode: "view" },
+      { disabled: true },
+    ];
+    for (const reading of readings) {
+      const view = await mount({ value: { lists: [], listsRead: "failed" }, ...reading });
+      try {
+        assert.equal(view.container.querySelector('[data-testid="list-picker-try-again"]'), null);
+        assert.deepEqual(view.writes, []);
+      } finally {
+        await view.unmount();
+      }
+    }
+  });
+
+  it("the root carries the design example's conformance id on every reading", async () => {
+    for (const value of [{ lists: LISTS, listsRead: "ok" }, { lists: [], listsRead: "ok" }, { listsRead: "failed" }]) {
+      const view = await mount({ value });
+      try {
+        const root = view.container.firstElementChild;
+        assert.equal(root?.getAttribute("data-conformance-id"), "run-list-step-multi-pick");
+        assert.equal(view.container.children.length, 1, "the step draws more than one root");
+      } finally {
+        await view.unmount();
+      }
     }
   });
 
@@ -215,5 +290,105 @@ describe("the list step, mounted", () => {
     } finally {
       await view.unmount();
     }
+  });
+});
+
+// THE HOST'S LIFT, REPRODUCED (finding: "the renderer emits { listIds, listNames }
+// and not the gate's string scope with type: "list"").
+//
+// The component writes `{ listIds, listNames }`; the gate's answer is what the
+// host makes of it on Continue. This fixture copies the several-picks branch of
+// `liftRendererApprovalNote` from cinatra-ai/cinatra
+// packages/agents/src/hitl-gate-submit.ts (with its `isUsableListId`), and the
+// resume-text choice of packages/agents/src/review-task-actions.ts (the note is
+// the resume text: the list step's lift drops any `userResponse`). Keep it in
+// step with those files; it is a documented copy, not an import, because an
+// extension never imports the host.
+function hostLiftListPicker(buffered, now) {
+  const isUsableListId = (id) => typeof id === "string" && id.trim().length > 0;
+  const ticked = buffered.listIds;
+  if (Array.isArray(ticked)) {
+    const names = buffered.listNames;
+    const listIds = [];
+    const listNames = [];
+    ticked.forEach((id, index) => {
+      if (!isUsableListId(id) || listIds.includes(id)) return;
+      listIds.push(id);
+      const name = Array.isArray(names) ? names[index] : undefined;
+      listNames.push(typeof name === "string" ? name : "");
+    });
+    if (listIds.length > 0) {
+      return { approvalNote: JSON.stringify({ type: "list", listIds, listNames, snapshotAt: now }) };
+    }
+  }
+  return null; // the host's single-pick fallback is not this step's shape
+}
+
+/** Every node of the embedded flows, by id. */
+function nodesById() {
+  const byId = new Map();
+  const walk = (node) => {
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (node === null || typeof node !== "object") return;
+    if (typeof node.id === "string" && typeof node.component_type === "string") byId.set(node.id, node);
+    Object.values(node).forEach(walk);
+  };
+  walk(OAS);
+  return byId;
+}
+
+/** The generation step's Step 1 reading of `accountScope`, as its prompt states it. */
+function generationAcceptsScope(accountScope) {
+  let scope;
+  try {
+    scope = JSON.parse(accountScope);
+  } catch {
+    return false;
+  }
+  if (scope === null || typeof scope !== "object" || Array.isArray(scope)) return false;
+  if (scope.type !== "list") return false;
+  const ids = Array.isArray(scope.listIds) ? scope.listIds : typeof scope.listId === "string" ? [scope.listId] : [];
+  return ids.length > 0;
+}
+
+describe("the gate's answer is the host's lift of the list step's write", () => {
+  const nodes = nodesById();
+  const gate = nodes.get("recipients-scope_gate");
+  const branch = nodes.get("recipients-scope_branch");
+  const generate = nodes.get("recipients-generate");
+
+  it("the flow declares the gate, its branch and the generation step this suite reads", () => {
+    assert.ok(gate && branch && generate);
+    assert.deepEqual(gate.outputs, [{ title: "accountScope", type: "string" }]);
+    assert.equal(gate.metadata.cinatra.inputRenderers.accountScope, "@cinatra-ai/email-outreach-agent:list-picker");
+    assert.match(generate.data.system, /ONLY type='list' is supported/);
+    assert.match(generate.data.system, /`listIds`/);
+  });
+
+  it("two ticks lift to a string the gate takes and the generation accepts as type list", () => {
+    const write = { listIds: ["view-b", "view-a"], listNames: ["Trade fair leads", "Customers in Berlin"] };
+    const lift = hostLiftListPicker(write, "2026-11-24T00:00:00.000Z");
+    assert.ok(lift, "the host lifts nothing from the step's write");
+    const answer = lift.approvalNote;
+    assert.equal(typeof answer, "string", "the gate declares accountScope as a string");
+    assert.deepEqual(JSON.parse(answer), {
+      type: "list",
+      listIds: ["view-b", "view-a"],
+      listNames: ["Trade fair leads", "Customers in Berlin"],
+      snapshotAt: "2026-11-24T00:00:00.000Z",
+    });
+    assert.equal(generationAcceptsScope(answer), true);
+    assert.equal(Object.hasOwn(branch.mapping, answer), false, "a pick would take the refresh branch");
+  });
+
+  it("the raw write, unlifted, is not an answer the generation accepts", () => {
+    assert.equal(generationAcceptsScope(JSON.stringify({ listIds: ["view-a"], listNames: ["A"] })), false);
+  });
+
+  it("the Try again write names the value the branch maps to its refresh branch", () => {
+    assert.equal(branch.mapping[PARAMS.refreshValue], "refresh");
+    assert.equal(hostLiftListPicker({ listIds: [], listNames: [], refresh: PARAMS.refreshValue }, "x"), null,
+      "the refresh request lifts as a pick");
+    assert.equal(generationAcceptsScope(PARAMS.refreshValue), false);
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { createElement, Fragment, useEffect, useRef, useState } from "react";
+import { createElement, useEffect, useRef, useState, type ReactNode } from "react";
 
 // The list step's own component (cinatra-ai/cinatra#3562). The
 // `@cinatra-ai/email-outreach-agent:list-picker` binding names this module as
@@ -12,7 +12,9 @@ import { createElement, Fragment, useEffect, useRef, useState } from "react";
 // `emit_lists` step). The value may arrive as that object or as its JSON text.
 // It offers rows only when the read reports `listsRead: "ok"`: a failed read,
 // or one that reports no outcome or another one, offers no row, so nothing is
-// selectable and the step draws its empty-state message. An entry is a row only
+// selectable. A read that reports `ok` with no row draws the declared
+// empty-state message; any other read draws the step's one failed-read alert
+// (design specs/app-artifact-review.html I.1). An entry is a row only
 // when its id and its name are both texts that are not blank; an id given twice
 // is one row, the first that is a row.
 //
@@ -20,6 +22,29 @@ import { createElement, Fragment, useEffect, useRef, useState } from "react";
 // Each tick or untick writes `{ listIds, listNames }`, the ticked lists in the
 // order they were ticked, with their names in the same order. Unticking the
 // last row writes both arrays empty.
+//
+// THE GATE'S ANSWER IS THE HOST'S LIFT OF THIS WRITE, NOT THE WRITE ITSELF. The
+// gate (`recipients-scope_gate`, cinatra/oas.json) declares `accountScope` as a
+// string, and the generation step reads that string as JSON and refuses any
+// scope without `type: "list"`. This component does not write that string: the
+// host does. On Continue, the host's `liftRendererApprovalNote`
+// (cinatra-ai/cinatra packages/agents/src/hitl-gate-submit.ts) turns a
+// `:list-picker` buffer's `{ listIds, listNames }` into the approval note
+// `JSON.stringify({ type: "list", listIds, listNames, snapshotAt })` (each id
+// once, blank ids dropped), and that note is the resume text the gate receives
+// (review-task-actions.ts). So `{ listIds, listNames }` is the shape the host
+// reads; do not write the string here. tests/list-picker-renderer.test.mjs
+// reproduces the lift and checks its result against the gate and the generation.
+//
+// THE RECOVERY. With no row to pick (an empty read or a failed one) the run
+// would wait on this step for good, because nothing can be ticked. When the
+// binding declares `refreshValue`, the step draws Try again; a press writes
+// `{ listIds: [], listNames: [], refresh: <refreshValue> }`. The declared value
+// ("refresh") is the answer the flow's `recipients-scope_branch` maps to its
+// `refresh` branch, which reads the CRM's lists again and comes back to this
+// step. The empty `listIds` keep the host's pick check false, so the press is
+// never sent as a pick, and the report stays `false`, so Continue stays
+// unavailable (design I.1: "The Continue stays unavailable").
 //
 // WHAT IT REPORTS. Through `onValidityChange` (props contract 1, an optional
 // prop): `false` while fewer lists are ticked than the declared `minSelected`
@@ -34,7 +59,11 @@ import { createElement, Fragment, useEffect, useRef, useState } from "react";
 // click ticks nothing.
 //
 // WITH NO LIST TO PICK it draws the empty-state message the binding declared,
-// as declared, and no row and no link.
+// as declared (or, for a failed read, its one failed-read alert), no row and
+// no link, and Try again when the binding declares a refresh value.
+//
+// The root element carries `data-conformance-id="run-list-step-multi-pick"`,
+// the design example this step implements, for the shared UI grader.
 //
 // The module is plain `.ts` written with `createElement` and imports nothing but
 // `react`, so this package's own test runner loads it as it is.
@@ -57,19 +86,38 @@ const WAITING_WORDS = "Awaiting your picks";
 /** What the step says with no list to pick when the binding declared no message. */
 const NOTHING_TO_PICK_READING = "There is no list to pick on this step yet.";
 
-/** The lists the step's content offers, in its order. */
-export function offeredLists(value: unknown): OfferedList[] {
+/** The step's one message for a failed list read (design I.1, run-list-step-error). */
+const FAILED_READ_READING = "This list could not be read.";
+
+const TRY_AGAIN_WORDS = "Try again";
+
+/** The design example this component implements (design specs/app-artifact-review.html I.1). */
+export const CONFORMANCE_ID = "run-list-step-multi-pick";
+
+/** The step's content as an object (it may arrive as its JSON text), else null. */
+function readContent(value: unknown): { lists?: unknown; listsRead?: unknown } | null {
   let content = value;
   if (typeof content === "string") {
     try {
       content = JSON.parse(content);
     } catch {
-      return [];
+      return null;
     }
   }
-  if (content === null || typeof content !== "object" || Array.isArray(content)) return [];
-  const { lists, listsRead } = content as { lists?: unknown; listsRead?: unknown };
-  if (listsRead !== "ok" || !Array.isArray(lists)) return [];
+  if (content === null || typeof content !== "object" || Array.isArray(content)) return null;
+  return content as { lists?: unknown; listsRead?: unknown };
+}
+
+/** Whether the step's content reports a list read that succeeded (`listsRead: "ok"`). */
+export function readSucceeded(value: unknown): boolean {
+  const content = readContent(value);
+  return content !== null && content.listsRead === "ok" && Array.isArray(content.lists);
+}
+
+/** The lists the step's content offers, in its order. */
+export function offeredLists(value: unknown): OfferedList[] {
+  if (!readSucceeded(value)) return [];
+  const lists = readContent(value)?.lists as unknown[];
   const seen = new Set<string>();
   const offered: OfferedList[] = [];
   for (const entry of lists as unknown[]) {
@@ -98,6 +146,8 @@ function declaredFloor(params: ListPickerProps["bindingParams"]): number {
 const ROW_CLASSES =
   "flex cursor-pointer gap-2.5 rounded-lg border border-line bg-surface-strong px-3 py-2.5";
 const CHECKBOX_CLASSES = "mt-[3px] size-3.5 flex-none accent-primary";
+const TRY_AGAIN_CLASSES =
+  "flex-none rounded-md border border-line bg-surface-strong px-3 py-1 text-xs font-semibold text-foreground";
 
 /** The list step. */
 export default function ListPickerRenderer(props: ListPickerProps) {
@@ -157,22 +207,54 @@ export default function ListPickerRenderer(props: ListPickerProps) {
         )
       : null;
 
+  const root = (...children: ReactNode[]) =>
+    createElement("div", { "data-conformance-id": CONFORMANCE_ID, "data-testid": "list-picker-step" }, ...children);
+
   if (lists.length === 0) {
-    return createElement(
-      Fragment,
-      null,
+    const refreshValue = declaredWords(props.bindingParams, "refreshValue");
+    const tryAgain =
+      refreshValue !== null && writes
+        ? createElement(
+            "button",
+            {
+              type: "button",
+              className: TRY_AGAIN_CLASSES,
+              "data-testid": "list-picker-try-again",
+              onClick: () => {
+                if (!writes) return;
+                void props.onChange({ listIds: [], listNames: [], refresh: refreshValue });
+              },
+            },
+            TRY_AGAIN_WORDS,
+          )
+        : null;
+    if (!readSucceeded(props.value)) {
+      return root(
+        header,
+        createElement(
+          "div",
+          {
+            role: "alert",
+            "data-testid": "list-picker-read-failed",
+            className: "flex items-start gap-2.5 rounded-lg border border-destructive bg-surface-strong px-3.5 py-3",
+          },
+          createElement("p", { className: "m-0 min-w-0 flex-1 text-sm text-foreground" }, FAILED_READ_READING),
+          tryAgain,
+        ),
+      );
+    }
+    return root(
       header,
       createElement(
         "p",
         { role: "status", className: "text-sm text-foreground" },
         declaredWords(props.bindingParams, "emptyState") ?? NOTHING_TO_PICK_READING,
       ),
+      tryAgain !== null ? createElement("div", { className: "mt-2.5 flex" }, tryAgain) : null,
     );
   }
 
-  return createElement(
-    Fragment,
-    null,
+  return root(
     header,
     createElement(
       "div",
