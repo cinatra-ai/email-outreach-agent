@@ -98,6 +98,19 @@ function walkRefs(node, visit) {
   for (const value of Object.values(node)) walkRefs(value, visit);
 }
 
+/**
+ * A filing step (artifact_materialize) names its own step id in its input:
+ * the host requires `data.input.node_id` to equal the ApiNode's id, because it
+ * is the step's idempotency identity. When the step id changes, that input
+ * changes with it.
+ */
+function moveStepId(step, to) {
+  const input = step.data?.tool === "artifact_materialize" ? step.data.input : null;
+  if (input && typeof input === "object" && input.node_id === step.id) input.node_id = to;
+  if (step.name === step.id) step.name = to;
+  step.id = to;
+}
+
 function stepOf(flow, stepId, fail) {
   const step = flow.$referenced_components?.[stepId];
   if (!step) fail(`step '${stepId}' is absent`);
@@ -261,8 +274,7 @@ function applyEntry(flow, entry, fail) {
       const renamed = {};
       for (const [key, value] of Object.entries(rc)) renamed[key === entry.step ? entry.to : key] = value;
       flow.$referenced_components = renamed;
-      if (step.name === step.id) step.name = entry.to;
-      step.id = entry.to;
+      moveStepId(step, entry.to);
       const token = new RegExp(`(^|_to_)${escapeRegExp(entry.step)}(?=_|$)`, "g");
       for (const edge of [...flow.control_flow_connections, ...flow.data_flow_connections]) {
         if (edgeTouches(edge, entry.step)) edge.name = edge.name.replace(token, `$1${entry.to}`);
@@ -278,8 +290,7 @@ function applyEntry(flow, entry, fail) {
 function prefixFlow(flow, prefix) {
   const refs = {};
   for (const [key, step] of Object.entries(flow.$referenced_components)) {
-    if (step.name === step.id) step.name = prefix + step.id;
-    step.id = prefix + step.id;
+    moveStepId(step, prefix + step.id);
     refs[prefix + key] = step;
   }
   flow.$referenced_components = refs;

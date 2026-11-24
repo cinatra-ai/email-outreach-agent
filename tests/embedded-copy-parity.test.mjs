@@ -146,6 +146,40 @@ test("(7) an add-value entry adds a value the child lacks, and refuses one the c
   refused(noValue, "no value");
 });
 
+test("(7) a filing step's own node_id follows its step id through the prefix and a rename", () => {
+  const filing = (id) => ({
+    component_type: "ApiNode",
+    id,
+    name: id,
+    data: { tool: "artifact_materialize", input: { content: "{{ x }}", node_id: id } },
+  });
+  const child = {
+    component_type: "Flow",
+    id: "child",
+    nodes: [{ $component_ref: "file_a" }, { $component_ref: "file_b" }],
+    control_flow_connections: [],
+    data_flow_connections: [],
+    $referenced_components: {
+      file_a: filing("file_a"),
+      file_b: filing("file_b"),
+      other: { component_type: "ApiNode", id: "other", name: "other", data: { tool: "objects_save", input: { node_id: "other" } } },
+    },
+  };
+  const group = {
+    repository: "org/child",
+    prefix: "p-",
+    copyId: "copy",
+    declared: [{ child: "org/child", kind: "rename-step", step: "file_b", to: "file_c", reason: "probe" }],
+  };
+  const made = generateCopy(child, group).$referenced_components;
+  // The host requires the materialize input's node_id to equal its ApiNode's id.
+  assert.equal(made["p-file_a"].data.input.node_id, "p-file_a");
+  assert.equal(made["p-file_c"].data.input.node_id, "p-file_c");
+  // Another tool's input is not a step identity and is kept as it is.
+  assert.equal(made["p-other"].data.input.node_id, "other");
+  assert.equal(child.$referenced_components.file_a.data.input.node_id, "file_a", "the child is changed");
+});
+
 test("(7) the recipient selection copy is its child but for the declared differences", () => {
   assertCopyIsItsChild("email-recipient-selection-subflow");
 });
