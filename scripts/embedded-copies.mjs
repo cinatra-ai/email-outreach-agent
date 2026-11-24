@@ -22,6 +22,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 
 export const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const LIST_PATH = "scripts/embedded-copies.json";
@@ -100,18 +101,81 @@ function walkRefs(node, visit) {
 
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 
-/** The ways a step's `data` text may be written: its indentation, whether the
- * characters above U+007E are \u escapes, and whether a newline closes it. */
-const TEXT_FORMS = [undefined, 2, 4, "\t"].flatMap((indent) =>
-  [false, true].flatMap((escaped) => ["", "\n"].map((tail) => ({ indent, escaped, tail }))),
-);
-
-function textIn(value, form) {
-  let text = JSON.stringify(value, null, form.indent);
-  if (form.escaped) {
-    text = text.replace(/[\u007f-\uffff]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
+/** The members of the JSON object that starts at `at`: each key (decoded) with
+ * the [start, end) offsets of its value token, in the order written. The text
+ * is known to parse; this walks it by position and changes nothing. */
+function membersOf(text, at) {
+  const members = [];
+  let i = skipSpace(text, at + 1);
+  if (text[i] === "}") return members;
+  for (;;) {
+    const keyEnd = skipString(text, i);
+    const key = JSON.parse(text.slice(i, keyEnd));
+    i = skipSpace(text, keyEnd);
+    const start = skipSpace(text, i + 1);
+    const end = skipValue(text, start);
+    members.push({ key, start, end });
+    i = skipSpace(text, end);
+    if (text[i] !== ",") return members;
+    i = skipSpace(text, i + 1);
   }
-  return text + form.tail;
+}
+
+/**
+ * The [start, end) offsets of the value token of `node_id` inside the
+ * `input` object of the top-level object of a JSON text, or null when there is
+ * none. A member named `node_id` or `input` that is written twice at its level
+ * throws: the text is not edited where it could be read two ways.
+ */
+function nodeIdSpan(text) {
+  const only = (members, name, where) => {
+    const found = members.filter((member) => member.key === name);
+    if (found.length > 1) throw new Error(`${where} '${name}' is written more than once`);
+    return found[0] ?? null;
+  };
+  const input = only(membersOf(text, skipSpace(text, 0)), "input", "the text's member");
+  if (!input || text[input.start] !== "{") return null;
+  const nodeId = only(membersOf(text, input.start), "node_id", "the input's member");
+  return nodeId ? [nodeId.start, nodeId.end] : null;
+}
+
+/** A string token for `id`; written with \u escapes when the token it replaces used them. */
+function tokenFor(id, replaced) {
+  const token = JSON.stringify(id);
+  if (!/\\u/.test(replaced)) return token;
+  return token.replace(/[\u007f-\uffff]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
+}
+
+/**
+ * The JSON text of a filing step with `input.node_id` changed from `from` to
+ * `to` and every other byte kept as written (spaces, tabs, CR, LF, key order,
+ * number formats, duplicate keys elsewhere). The edit is made by position, then
+ * checked by parsing: the result must parse to the old value with only
+ * `input.node_id` changed.
+ */
+function moveNodeId(text, from, to, fail) {
+  const named = `step '${from}'`;
+  let span;
+  try {
+    span = nodeIdSpan(text);
+  } catch (error) {
+    fail(`${named} carries its data as a text in which ${error.message}`);
+  }
+  if (!span) fail(`${named} carries its data as a text in which the input's node_id cannot be located`);
+  const [start, end] = span;
+  const moved = text.slice(0, start) + tokenFor(to, text.slice(start, end)) + text.slice(end);
+  const expected = JSON.parse(text);
+  expected.input.node_id = to;
+  let actual;
+  try {
+    actual = JSON.parse(moved);
+  } catch {
+    fail(`${named} carries its data as a text that does not parse once its node_id moves`);
+  }
+  if (!isDeepStrictEqual(actual, expected)) {
+    fail(`${named} carries its data as a text that changes in more than its node_id once it moves`);
+  }
+  return moved;
 }
 
 /**
@@ -119,16 +183,15 @@ function textIn(value, form) {
  * the host requires `data.input.node_id` to equal the ApiNode's id, because it
  * is the step's idempotency identity. When the step id changes, that input
  * changes with it. The step's `data` is an object or a JSON text (the kind
- * check reads both; its `input` must be an object). A text is written back in
- * the form it was read in, and only when its node_id moves; a text that
- * cannot be read, or written back in that form, fails and names the step.
+ * check reads both; its `input` must be an object). A text keeps every byte
+ * as written but the one node_id token; a text that does not parse fails and
+ * names the step.
  */
 function moveStepId(step, to, fail) {
-  const text = typeof step.data === "string" ? step.data : null;
   let data = step.data;
-  if (text !== null) {
+  if (typeof data === "string") {
     try {
-      data = JSON.parse(text);
+      data = JSON.parse(data);
     } catch {
       fail(`step '${step.id}' carries its data as a text that does not parse`);
     }
@@ -136,13 +199,8 @@ function moveStepId(step, to, fail) {
   if (isObject(data) && data.tool === "artifact_materialize") {
     if (!isObject(data.input)) fail(`step '${step.id}' is a filing step whose input is not an object`);
     if (data.input.node_id === step.id) {
-      let form;
-      if (text !== null) {
-        form = TEXT_FORMS.find((candidate) => textIn(data, candidate) === text);
-        if (!form) fail(`step '${step.id}' carries its data in a form that cannot be written back unchanged`);
-      }
-      data.input.node_id = to;
-      if (text !== null) step.data = textIn(data, form);
+      if (typeof step.data === "string") step.data = moveNodeId(step.data, step.id, to, fail);
+      else data.input.node_id = to;
     }
   }
   if (step.name === step.id) step.name = to;
