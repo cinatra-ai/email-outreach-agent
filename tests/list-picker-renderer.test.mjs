@@ -588,6 +588,96 @@ describe("the list step, mounted", () => {
     }
   });
 
+  it("a new host value while a read is pending ends the loading at once, and the late result changes nothing", async () => {
+    for (const settle of ["resolve", "reject"]) {
+      let pending;
+      const onRequestRefresh = () =>
+        new Promise((resolve, reject) => {
+          pending = { resolve, reject };
+        });
+      const view = await mount({ value: { lists: LISTS, listsRead: "ok" }, onRequestRefresh });
+      try {
+        await click(boxes(view.container)[0]);
+        await click(boxes(view.container)[1]);
+        await view.rerender({ value: FAILED, onRequestRefresh });
+        await click(view.container.querySelector('[data-testid="list-picker-try-again"]'));
+        assert.ok(view.container.querySelector('[data-testid="list-picker-loading"]') !== null, `${settle}: no loading reading`);
+        const before = view.writes.length;
+        // The host's newer word: only view-b.
+        await view.rerender({ value: { lists: [LISTS[1]], listsRead: "ok" }, onRequestRefresh });
+        assert.equal(view.container.querySelector('[data-testid="list-picker-loading"]') !== null, false, `${settle}: still loading`);
+        const titles = () =>
+          [...view.container.querySelectorAll('[data-testid="list-picker-row-title"]')].map((t) => t.textContent);
+        assert.deepEqual(titles(), ["Trade fair leads"], `${settle}: the host value is not drawn`);
+        assert.deepEqual(view.writes.slice(before), [{ listIds: ["view-b"], listNames: ["Trade fair leads"] }]);
+        assert.equal(view.reports.at(-1), true);
+        await act(async () => {
+          if (settle === "resolve") pending.resolve({ lists: [LISTS[2], { id: "view-d", name: "Partners" }], listsRead: "ok" });
+          else pending.reject(new Error("late"));
+        });
+        assert.deepEqual(titles(), ["Trade fair leads"], `${settle}: the late result is drawn`);
+        assert.equal(view.container.querySelector('[role="alert"]') !== null, false, `${settle}: the late failure is drawn`);
+        assert.equal(view.writes.length, before + 1, `${settle}: the late result wrote`);
+        assert.deepEqual(boxes(view.container).map((box) => box.checked), [true]);
+      } finally {
+        await view.unmount();
+      }
+    }
+  });
+
+  it("the host drawing the step again with unchanged content while a read is pending does not cancel it", async () => {
+    const pending = deferred();
+    const onRequestRefresh = () => pending.promise;
+    const view = await mount({ value: FAILED, onRequestRefresh });
+    try {
+      await click(view.container.querySelector('[data-testid="list-picker-try-again"]'));
+      await view.rerender({ value: { lists: [], listsRead: "failed" }, onRequestRefresh });
+      await view.rerender({ value: JSON.stringify(FAILED), onRequestRefresh });
+      assert.ok(view.container.querySelector('[data-testid="list-picker-loading"]') !== null, "the read was cancelled");
+      await act(async () => {
+        pending.resolve({ lists: LISTS, listsRead: "ok" });
+      });
+      assert.equal(boxes(view.container).length, 3);
+      // A read already drawn stays when the host draws the same content again.
+      await view.rerender({ value: FAILED, onRequestRefresh });
+      assert.equal(boxes(view.container).length, 3, "an unchanged host value replaced the read");
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("after a read was dropped for a newer host value, a new press starts a new read", async () => {
+    const pendings = [];
+    const onRequestRefresh = () => {
+      const d = deferred();
+      pendings.push(d);
+      return d.promise;
+    };
+    const view = await mount({ value: FAILED, onRequestRefresh });
+    try {
+      await click(view.container.querySelector('[data-testid="list-picker-try-again"]'));
+      await view.rerender({ value: { lists: [], listsRead: "ok" }, onRequestRefresh });
+      const button = view.container.querySelector('[data-testid="list-picker-try-again"]');
+      assert.ok(button, "no Try again after the newer value");
+      await click(button);
+      assert.equal(pendings.length, 2, "the second press made no read");
+      assert.ok(view.container.querySelector('[data-testid="list-picker-loading"]') !== null);
+      await act(async () => {
+        pendings[0].resolve({ lists: [LISTS[0]], listsRead: "ok" });
+      });
+      assert.ok(view.container.querySelector('[data-testid="list-picker-loading"]') !== null, "the dropped read ended the new one");
+      await act(async () => {
+        pendings[1].resolve({ lists: [LISTS[2]], listsRead: "ok" });
+      });
+      assert.deepEqual(
+        [...view.container.querySelectorAll('[data-testid="list-picker-row-title"]')].map((t) => t.textContent),
+        ["Newsletter"],
+      );
+    } finally {
+      await view.unmount();
+    }
+  });
+
   it("a read that ends after the step is gone sets nothing", async () => {
     const pending = deferred();
     const errors = [];

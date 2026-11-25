@@ -48,7 +48,10 @@ import { createElement, useEffect, useRef, useState, type ReactNode } from "reac
 // malformed result draws the failed reading. A second press while one read is
 // pending does nothing, and a read that ends after the step is gone, or after
 // it was locked (disabled or drawn read-only), sets nothing and writes nothing.
-// A new value from the host replaces a read made on Try again.
+// A new value from the host (one whose content differs from the last value
+// seen) is the newest word: it replaces a read made on Try again, and a read
+// still pending is dropped when it settles, its loading reading ending at once.
+// The host drawing the step again with the same content changes nothing.
 //
 // ONE RECONCILIATION for every read the step draws, whether a new value from
 // the host or the result of Try again. A read that failed (or was rejected or
@@ -315,6 +318,7 @@ export default function ListPickerRenderer(props: ListPickerProps) {
   const [reread, setReread] = useState<{ content: unknown } | null>(null);
   const [reading, setReading] = useState(false);
   const inFlight = useRef(false);
+  const requestSeq = useRef(0);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -362,6 +366,10 @@ export default function ListPickerRenderer(props: ListPickerProps) {
   const requestRefresh = props.onRequestRefresh;
   const refresh = async () => {
     if (!writes || typeof requestRefresh !== "function" || inFlight.current) return;
+    // Every read has an order: this request's number. A newer word from the
+    // host while it is pending moves the number on, and this result is then
+    // dropped, whether it resolves or rejects.
+    const request = ++requestSeq.current;
     inFlight.current = true;
     setReading(true);
     let next: unknown;
@@ -370,6 +378,7 @@ export default function ListPickerRenderer(props: ListPickerProps) {
     } catch {
       next = FAILED_READ;
     }
+    if (request !== requestSeq.current) return;
     inFlight.current = false;
     if (!mounted.current) return;
     // The props as they are now, not as they were at the press: a step that was
@@ -385,13 +394,22 @@ export default function ListPickerRenderer(props: ListPickerProps) {
     setReading(false);
   };
 
-  // A new value from the host replaces a read made on Try again: the value is
-  // the newer word on the step's lists.
+  // A new value from the host is the newest word on the step's lists: it
+  // replaces a read made on Try again, and a read still pending is dropped
+  // (its loading reading ends at once, and a later press starts a new read).
+  // Only a value whose content differs from the last host value seen counts;
+  // the host drawing the step again with the same content is no newer word,
+  // so a pending read goes on and a read already drawn stays.
   const valueKey = readKey(props.value);
   const seenValueKey = useRef(valueKey);
   useEffect(() => {
     if (seenValueKey.current === valueKey) return;
     seenValueKey.current = valueKey;
+    if (inFlight.current) {
+      requestSeq.current += 1;
+      inFlight.current = false;
+      setReading(false);
+    }
     setReread(null);
   }, [valueKey]);
 
