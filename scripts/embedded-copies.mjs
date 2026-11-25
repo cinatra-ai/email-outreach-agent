@@ -497,39 +497,100 @@ const ENV_VAR = /^[A-Z_][A-Z0-9_]*$/;
 // tests/lifecycle-d-w8-flow.test.mjs): comments, tags and outputs.
 const TEMPLATE_TOKEN = /\{#[\s\S]*?#\}|\{%([\s\S]*?)%\}|\{\{([\s\S]*?)\}\}/g;
 
-// The template constructs the copy generator reads: exactly those the pinned children and the outreach flow use,
-// plus the tests named below. Anything else is refused, so a flow that needs more extends this list deliberately.
-const PIECE = /\s*('[^'\\]*'|"[^"\\]*"|\d+|[A-Za-z_]\w*|==|!=|<=|>=|[<>.|()[\]])/y;
-const WORDS = new Set(["and", "or", "not", "in", "is", "true", "false", "none", "True", "False", "None"]);
+// The template grammar the copy generator reads: exactly what the pinned children and the outreach flow use. An
+// expression is accepted only when these rules consume it whole; anything else is refused as unsupported, so a
+// flow that needs more extends this grammar deliberately.
+//   or-expr     := and-expr ("or" and-expr)*
+//   and-expr    := not-expr ("and" not-expr)*
+//   not-expr    := "not" not-expr | comparison
+//   comparison  := operand (("==" | "!=" | "<" | "<=" | ">" | ">=") operand)?
+//   operand     := primary ("|" filter)*            filter: tojson | length, no arguments
+//   primary     := name-path | literal | "(" or-expr ")"
+//   name-path   := name ("." name)*
+//   literal     := '...' (single quotes, no backslash) | digits
+// The names an expression renders are the first names of its name-paths.
+const EXPRESSION_TOKEN = /\s*('[^'\\]*'|\d+|[A-Za-z_]\w*|==|!=|<=|>=|[<>.|()])/y;
+const RESERVED = new Set(["and", "or", "not", "if", "else", "elif", "in", "is", "true", "false", "none", "True", "False", "None"]);
+const COMPARISONS = new Set(["==", "!=", "<", "<=", ">", ">="]);
 const FILTERS = new Set(["tojson", "length"]);
-const TESTS = new Set(["defined", "none"]);
+const isName = (token) => token !== undefined && /^[A-Za-z_]/.test(token) && !RESERVED.has(token);
 
-/** The names one expression reads, or the construct in it the generator does not read. */
-function readExpression(expression, found) {
-  const pieces = [];
-  PIECE.lastIndex = 0;
+/** The names one expression renders, or null when the grammar does not read it whole. */
+function parseExpression(expression) {
+  const tokens = [];
+  EXPRESSION_TOKEN.lastIndex = 0;
   let end = 0;
-  for (let m; (m = PIECE.exec(expression)); end = PIECE.lastIndex) pieces.push(m[1]);
-  const rest = expression.slice(end).trim();
-  if (rest !== "") {
-    const piece = /^\S/.exec(rest)[0];
-    found.problems.push(/[-+*/%~{},:=!]/.test(piece) ? `'${piece}'` : `an expression it cannot read: ${expression.trim()}`);
-  }
-  pieces.forEach((piece, at) => {
-    if (!/^[A-Za-z_]/.test(piece)) return;
-    const before = pieces[at - 1];
-    if (before === "|" && !FILTERS.has(piece)) found.problems.push(`filter '${piece}'`);
-    else if (pieces[at + 1] === "(" && !WORDS.has(piece)) found.problems.push(`call of '${piece}'`);
-    else if (before === "." || before === "|") return;
-    else if (before === "is" || (before === "not" && pieces[at - 2] === "is")) {
-      if (piece !== "not" && !TESTS.has(piece)) found.problems.push(`test '${piece}'`);
-    } else if (piece === "if" || piece === "else") found.problems.push(`'${piece}'`);
-    else if (!WORDS.has(piece)) found.names.add(piece);
-  });
+  for (let m; (m = EXPRESSION_TOKEN.exec(expression)); end = EXPRESSION_TOKEN.lastIndex) tokens.push(m[1]);
+  if (expression.slice(end).trim() !== "") return { names: null, filter: null };
+  let at = 0;
+  const names = new Set();
+  let filter = null;
+  const orExpr = () => andExpr() && repeat("or", andExpr);
+  const andExpr = () => notExpr() && repeat("and", notExpr);
+  const repeat = (word, rule) => {
+    while (tokens[at] === word) {
+      at += 1;
+      if (!rule()) return false;
+    }
+    return true;
+  };
+  const notExpr = () => {
+    if (tokens[at] !== "not") return comparison();
+    at += 1;
+    return notExpr();
+  };
+  const comparison = () => {
+    if (!operand()) return false;
+    if (!COMPARISONS.has(tokens[at])) return true;
+    at += 1;
+    return operand();
+  };
+  const operand = () => {
+    if (!primary()) return false;
+    while (tokens[at] === "|") {
+      if (!FILTERS.has(tokens[at + 1])) {
+        filter = tokens[at + 1] ?? "";
+        return false;
+      }
+      at += 2;
+    }
+    return true;
+  };
+  const primary = () => {
+    const token = tokens[at];
+    if (token === "(") {
+      at += 1;
+      if (!orExpr() || tokens[at] !== ")") return false;
+      at += 1;
+      return true;
+    }
+    if (token !== undefined && /^('|\d)/.test(token)) {
+      at += 1;
+      return true;
+    }
+    if (!isName(token)) return false;
+    names.add(token);
+    at += 1;
+    while (tokens[at] === ".") {
+      if (!isName(tokens[at + 1])) return false;
+      at += 2;
+    }
+    return true;
+  };
+  const whole = orExpr() && at === tokens.length;
+  return { names: whole ? names : null, filter };
 }
 
-/** The names one template text reads: comments' bare placeholders, outputs, and the if, elif, else and endif tags. */
+/** Adds what one expression renders to `found`, or the reason the grammar refuses it. */
+function readExpression(expression, found) {
+  const { names, filter } = parseExpression(expression);
+  if (names) for (const name of names) found.names.add(name);
+  else found.problems.push(filter ? `filter '${filter}'` : `expression '${expression.trim()}'`);
+}
+
+/** The names one template text reads: comments' bare placeholders, outputs, and nested if, elif, else and endif tags. */
 function readTemplate(text, found) {
+  const open = [];
   for (const m of text.matchAll(TEMPLATE_TOKEN)) {
     if (m[0].startsWith("{#")) {
       for (const hint of m[0].matchAll(PLACEHOLDER)) if (!ENV_VAR.test(hint[1])) found.names.add(hint[1]);
@@ -545,9 +606,21 @@ function readTemplate(text, found) {
       continue;
     }
     const [, tag, rest] = /^\s*(\w*)([\s\S]*)$/.exec(body);
-    if (tag === "if" || tag === "elif") readExpression(rest, found);
-    else if ((tag !== "else" && tag !== "endif") || rest.trim() !== "") found.problems.push(`tag '${tag}'`);
+    const last = open.length - 1;
+    if (tag === "if") {
+      readExpression(rest, found);
+      open.push("if");
+    } else if (tag === "elif" || (tag === "else" && rest.trim() === "")) {
+      if (last < 0) found.problems.push(`an ${tag} without its if`);
+      else if (open[last] === "else") found.problems.push(`an ${tag} after its else`);
+      else if (tag === "else") open[last] = "else";
+      if (tag === "elif") readExpression(rest, found);
+    } else if (tag === "endif" && rest.trim() === "") {
+      if (last < 0) found.problems.push("an endif without its if");
+      else open.pop();
+    } else found.problems.push(`tag '${tag}'`);
   }
+  if (open.length > 0) found.problems.push("an if without its endif");
 }
 
 /**

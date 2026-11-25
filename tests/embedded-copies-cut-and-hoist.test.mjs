@@ -725,14 +725,13 @@ const unsupported = (text, construct) =>
     construct,
   );
 
-test("(3089) the names a template reads through if, elif, filters, tests and attributes are its inputs", () => {
+test("(3089) the names a template reads through if, elif, filters and attributes are its inputs", () => {
   assert.deepEqual(rendersOf("{% if m %}x{% endif %}"), ["m"]);
   assert.deepEqual(rendersOf("{% if a %}{% elif m == 'v' %}{% else %}{% endif %}"), ["m"]);
   assert.deepEqual(rendersOf("{{ y | tojson }}"), ["y"]);
-  assert.deepEqual(rendersOf("{{ z.attr }}{{ a['k'] }}{{ a[w] }}"), ["z", "w"]);
+  assert.deepEqual(rendersOf("{{ z.attr.deeper }}{{ a.k }}"), ["z"]);
   assert.deepEqual(rendersOf("{% if m and (m|length > 0) %}{% endif %}"), ["m"]);
-  assert.deepEqual(rendersOf("{% if m is defined or n is not none %}{% endif %}"), ["m", "n"]);
-  assert.deepEqual(rendersOf("{% if 'x' in m %}{% endif %}"), ["m"]);
+  assert.deepEqual(rendersOf("{% if not m or n.s != 'x' %}{% endif %}"), ["m", "n"]);
   // pyagentspec reads a bare placeholder inside a comment (the input-hint sentinel) as an input.
   assert.deepEqual(rendersOf("{# pyagentspec-input-hint: {{ hint }} #}{{ a | tojson }}"), ["hint"]);
   // Every template-bearing text of the step counts, wherever it sits.
@@ -742,34 +741,60 @@ test("(3089) the names a template reads through if, elif, filters, tests and att
   assert.deepEqual(rendersOf("{% if q %}{% endif %}", "PluginRegexNode", "metadata.note"), ["q"]);
 });
 
-test("(3089) a template that reads only its inputs through the allowed constructs is generated", () => {
+test("(3089) a template that reads only its inputs through the allowed grammar is generated", () => {
   accepts("{% if a and (a|length > 0) %}present{% else %}missing{% endif %}");
-  accepts("{{ 'text' }}{{ 1 }}{{ true }}{{ none }}{{ False }}");
-  accepts("{% if a is defined %}{% endif %}{% if a is not defined %}{% endif %}{% if a is none %}{% endif %}{% if a is not none %}{% endif %}");
-  accepts("{% if a != 'x' and not (a == \"y\") or a.n >= 1 or a < 2 %}{% elif 'z' in xs %}{% endif %}");
-  accepts("{{ a.b['c'] | tojson }}{{ xs | length }}{{ CINATRA_BASE_URL }}");
+  accepts("{{ 'text' }}{{ 1 }}{{ '' }}");
+  accepts("{% if a != 'x' and not (a == 'y') or a.n >= 1 or a < 2 %}{% elif a.m <= 3 %}{% elif not not a %}{% endif %}");
+  accepts("{{ a.b.c | tojson }}{{ xs | length | tojson }}{{ CINATRA_BASE_URL }}{{CINATRA_BASE_URL}}");
   accepts("{# pyagentspec-input-hint: {{ a }} #}{{ a | tojson }}");
+  accepts("{% if a %}{% if xs %}{% else %}{% endif %}{% elif xs %}{% endif %}");
 });
 
-test("(3089) every template construct outside the allowed set is refused, naming it", () => {
+test("(3089) every template construct outside the grammar is refused, naming it", () => {
   unsupported("{% set ns = namespace() %}{% set ns.missing = a %}{{ missing }}", "tag 'set'");
   unsupported("{% set s %}{{ a }}{% endset %}", "tag 'set'");
   unsupported("{% for i in xs %}{{ i }}{% endfor %}", "tag 'for'");
   for (const tag of ["macro m()", "call m()", "include 'x'", "import 'x' as y", "extends 'x'", "block b", "with", "filter upper", "raw", "break", "continue"]) {
     unsupported(`{% ${tag} %}`, `tag '${tag.split(" ")[0]}'`);
   }
-  unsupported("{{ namespace() }}", "call of 'namespace'");
-  unsupported("{{ range(3) }}", "call of 'range'");
   unsupported("{{ a | upper }}", "filter 'upper'");
   unsupported("{{ a | default('x') }}", "filter 'default'");
-  unsupported("{{ a | tojson(indent=2) }}", "call of 'tojson'");
-  unsupported("{{ a is odd }}", "test 'odd'");
-  unsupported("{{ a if a else xs }}", "'if'");
-  unsupported("{{ a + 1 }}", "'+'");
-  unsupported("{{ a ~ 'x' }}", "'~'");
-  unsupported("{{ {'k': a} }}", "'{'");
+  for (const expression of [
+    "('x'.upper)()",
+    "(a)()",
+    "(a).b",
+    "a.b()",
+    "namespace()",
+    "range(3)",
+    "a|tojson(1)",
+    "a[b]",
+    "a['k']",
+    "a if xs else a",
+    "a ~ 'x'",
+    "a + 1",
+    "{'k': a}",
+    "[a]",
+    "'abc",
+    "'a\\'b'",
+    "\"t\"",
+    "a is defined",
+    "'x' in a",
+    "true",
+    "none",
+    "1.5",
+    "a ? 1 : 2",
+    "",
+  ]) {
+    unsupported(`{{ ${expression} }}`, `expression '${expression}'`);
+  }
+  unsupported("{% if a %}", "an if without its endif");
+  unsupported("{% endif %}", "an endif without its if");
+  unsupported("{% else %}", "an else without its if");
+  unsupported("{% elif a %}{% endif %}", "an elif without its if");
+  unsupported("{% if a %}{% else %}{% elif xs %}{% endif %}", "an elif after its else");
+  unsupported("{% if a %}{% else %}{% else %}{% endif %}", "an else after its else");
+  unsupported("{% if %}{% endif %}", "expression ''");
   unsupported("{%- if a -%}{% endif %}", "whitespace control");
-  unsupported("{{ a ? 1 : 2 }}", "an expression it cannot read");
 });
 
 test("(3089) every step of every pinned child and of the parent uses only the allowed template constructs", () => {
