@@ -6,7 +6,7 @@ Run an outbound email campaign from scratch in one guided flow. The agent walks 
 
 **Prerequisites:** connect a Gmail account via the Connections settings page before starting a campaign. You also need at least one saved contact list (use List Curator Agent or import from a CRM connector) so the recipient step has a source to pick from.
 
-**Configuration:** when you launch a run, you supply a target company website URL, an optional sender name, and a call-to-action string. The drafting agent uses those three values to personalize each email. The sender email address is collected separately in the delivery step via the Gmail sender selector.
+**Configuration:** when you launch a run, you supply a target company website URL, an optional sender name, a call-to-action string, and the sending address via the Gmail sender selector. The drafting agent uses the first three to personalize each email.
 
 **Artifact context (optional):** attach marketing ICP, strategy, or product portfolio artifacts to the offering context slot before drafting. The drafting agent reads them to ground emails in your actual positioning.
 
@@ -24,7 +24,7 @@ Run an outbound email campaign from scratch in one guided flow. The agent walks 
 - Materialize the recipient list from a saved contact list and confirm it before drafting
 - Recommend drafting skills and supporting context to ground every email
 - Generate one personalized first-touch draft per recipient for review
-- Approve every draft before the campaign advances to the sender step
-- Confirm the sender address before the trigger is configured
+- Review every email body before it can be sent; only reviewed bodies are sent
+- Release the send on a card showing the sender, recipients, emails and call to action
 - Configure the trigger that controls when the approved campaign should run
 - Fail-safe: no email leaves without explicit human approval at every consequential gate

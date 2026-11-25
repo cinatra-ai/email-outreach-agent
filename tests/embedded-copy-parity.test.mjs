@@ -411,3 +411,29 @@ test("(7) the parent hands each copy only inputs it takes and reads only outputs
   }
   assert.deepEqual(problems, []);
 });
+
+// The drafting pack ships the copy it expects the outreach to carry, taken whole
+// (cinatra-ai/email-drafting-agent e94f016cf9cf420408b342adbcc6569615b77877,
+// tests/fixtures/email-outreach-drafting-subflow.json, blob
+// f38b7c4856dae90573ec57c61d3b26c7cee07d7f, copied here under the same name).
+test("(7) the drafting copy is exactly the copy the drafting pack expects at the pinned commit", () => {
+  const index = groupFor("email-drafting-subflow");
+  assert.equal(list[index].commit, "e94f016cf9cf420408b342adbcc6569615b77877");
+  const expected = readFileSync(path.join(ROOT, "tests", "fixtures", "email-outreach-drafting-subflow.json"));
+  assert.equal(gitBlobSha(expected), "f38b7c4856dae90573ec57c61d3b26c7cee07d7f");
+  assert.equal(serialize(generateCopy(children[index], list[index])), expected.toString("utf8"));
+  assert.equal(serialize(flow.$referenced_components["email-drafting-subflow"]), expected.toString("utf8"));
+});
+
+// The delivery pack does the same for its copy and for its send step, which the
+// group hoists to the outreach's top level (tests/embedded-copies-cut-and-hoist.test.mjs
+// generates both from the snapshot; here the committed flow is read).
+test("(7) the delivery copy and the hoisted send are exactly what the delivery pack expects at the pinned commit", () => {
+  const index = groupFor("email-delivery-subflow");
+  assert.equal(list[index].commit, "0505839ee69da8672c6b62d4d11ad7138809421e");
+  const copy = readFileSync(path.join(ROOT, "tests", "fixtures", "email-outreach-delivery-subflow.json"), "utf8");
+  const send = readFileSync(path.join(ROOT, "tests", "fixtures", "email-outreach-delivery-send.json"), "utf8");
+  assert.equal(serialize(flow.$referenced_components["email-delivery-subflow"]), copy);
+  assert.equal(serialize(flow.$referenced_components.send), send);
+  assert.deepEqual(list[index].hoist, [{ step: "send", as: "send", declared: [] }]);
+});

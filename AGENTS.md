@@ -26,7 +26,7 @@ Call `objects_save` with:
   - `offeringCompanyWebsite=input.offeringCompanyWebsite`
   - `senderName=input.senderName` (if provided; omit if not)
   - `callToAction=input.callToAction`
-Do NOT include `senderEmail` — it is collected later by the email-sender agent.
+Do NOT include `senderEmail` — the run's start form collects it and hands it only to the send step.
 
 The response has shape `{ objectId, type, isNew, wasMerged, confidence }`.
 Save the returned `objectId` as `campaignId` for downstream steps.

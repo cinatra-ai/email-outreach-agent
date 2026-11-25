@@ -1,8 +1,11 @@
 // Lifecycle D W8 — the outreach flow itself.
 //
-// W6 (#3094) declared what this composite promises: five pauses, each named by
-// the one screen that draws it, and no setup pause. This suite holds the RUN to
-// that declaration — the flow, not the manifest.
+// W6 (#3094) declared what this composite promises: five pauses and no setup
+// pause. This suite holds the RUN to that declaration — the flow, not the
+// manifest. Since cinatra#3089 two of the five are drawn by the application
+// itself: the drafts review on its review card (one review per filed body) and
+// the send on its publish card, in front of the top-level publishing step; the
+// other three are drawn by the screens the manifest declares.
 //
 // Items (1)-(6) of cinatra#3096, each asserted on cinatra/oas.json.
 
@@ -22,6 +25,7 @@ const flowMeta = oas.metadata.cinatra;
 const recipientsFlow = refs["email-recipient-selection-subflow"];
 const draftsFlow = refs["email-drafting-subflow"];
 const deliveryFlow = refs["email-delivery-subflow"];
+const send = refs.send;
 
 /** Every InputMessageNode in the composite, parent flow and inlined subflows. */
 function collectPauses(node, out = new Map()) {
@@ -68,7 +72,7 @@ test("(1) the setup pause is gone from the flow", () => {
   assert.ok(hasEdge(oas, "start", "context_setup"), "the run no longer starts straight into the setup write");
 });
 
-test("(1) the start form asks for the three setup fields the pause used to ask for", () => {
+test("(1) the start form asks for the three setup fields the pause used to ask for, and the sender mailbox", () => {
   const start = refs.start;
   const titles = start.inputs.map((i) => i.title);
   for (const field of ["offeringCompanyWebsite", "callToAction", "senderName"]) {
@@ -80,10 +84,14 @@ test("(1) the start form asks for the three setup fields the pause used to ask f
     assert.ok(!(start.metadata.cinatra.hidden ?? []).includes(field), `${field} is hidden on the start form`);
   }
   // The setup form draws exactly the fields named in metadata.cinatra.required,
-  // so all three of the fields the retired pause used to ask for are named there.
-  assert.deepEqual(start.metadata.cinatra.required, ["offeringCompanyWebsite", "callToAction", "senderName"]);
+  // so all three of the fields the retired pause used to ask for are named there,
+  // and the sender mailbox the send takes (the send is a step of this flow now,
+  // so the delivery copy no longer asks for it).
+  assert.deepEqual(start.metadata.cinatra.required, ["offeringCompanyWebsite", "callToAction", "senderName", "senderEmail"]);
   assert.equal(start.metadata.cinatra.renderer, `${PKG}:setup-form`);
   assert.equal(start.metadata.cinatra.inputRenderers.callToAction, `${PKG}:cta`);
+  assert.equal(start.metadata.cinatra.inputRenderers.senderEmail, `${PKG}:gmail-sender`);
+  assert.ok(titles.includes("senderEmail") && oas.inputs.some((i) => i.title === "senderEmail"));
 });
 
 test("(1) the setup write reads the start form, not a gate output", () => {
@@ -130,26 +138,38 @@ test("(1) the drafting data gate is retired and its failure ends the run with it
 });
 
 // ---------------------------------------------------------------------------
-// (2) five pauses, each on the one screen that draws it
+// (2) five pauses: three on the screens the manifest declares, two on the
+//     application's own cards
 // ---------------------------------------------------------------------------
 
-const THE_FIVE = [
+const DRAWN = [
   ["recipients-scope_gate", `${PKG}:list-picker`],
   ["recipients-review_gate", "@cinatra-ai/email-recipient-selection-agent:campaign-recipients-review"],
   ["ctx-offeringContext-context_select_gate", "@cinatra-ai/context-selection-agent:context-selector"],
-  ["drafts-approval_gate", "@cinatra-ai/email-drafting-agent:email-drafts-review"],
-  ["sender-approval_gate", "@cinatra-ai/email-delivery-agent:send-confirmation"],
 ];
+const REVIEWED = "drafts-approval_gate";
 
 test("(2) the run pauses exactly five times", () => {
-  assert.deepEqual([...pauses.keys()].sort(), THE_FIVE.map(([id]) => id).sort());
+  // Four pauses are steps of the flow; the fifth is the stop the application
+  // inserts in front of the one top-level publishing step.
+  assert.deepEqual([...pauses.keys()].sort(), [...DRAWN.map(([id]) => id), REVIEWED].sort());
+  const publishing = oas.nodes.map((n) => n.$component_ref).filter((id) => refs[id]?.metadata?.cinatra?.publishes === true);
+  assert.deepEqual(publishing, ["send"]);
 });
 
-test("(2) each pause draws the one screen the manifest declares for it", () => {
-  assert.deepEqual(THE_FIVE.map(([, screen]) => screen), flowMeta.hitlScreens);
-  for (const [id, screen] of THE_FIVE) {
+test("(2) each pause draws the one screen the manifest declares for it, or the application's card", () => {
+  assert.deepEqual(DRAWN.map(([, screen]) => screen), flowMeta.hitlScreens);
+  for (const [id, screen] of DRAWN) {
     assert.equal(screenOf(pauses.get(id)), screen, `the "${id}" pause does not draw ${screen}`);
   }
+  // The drafts review draws no screen of its own: its marker names the filed
+  // bodies, and the application opens one review per body on its review card.
+  const review = pauses.get(REVIEWED).metadata.cinatra;
+  assert.equal(screenOf(pauses.get(REVIEWED)), undefined);
+  assert.deepEqual(review.artifactReview, { targetsInput: "reviewTargets" });
+  // The send draws no screen of its own: the application's publish card shows its rows.
+  assert.equal(send.metadata.cinatra.publishes, true);
+  assert.deepEqual(send.metadata.cinatra.publishRows.map((row) => row.label), ["From", "Recipients", "Emails", "Call to action"]);
 });
 
 test("(2) no pause draws an intermediate output screen", () => {
@@ -158,19 +178,16 @@ test("(2) no pause draws an intermediate output screen", () => {
   }
 });
 
-test("(2) the two output screens stay on the steps that name them", () => {
+test("(2) the recipients output screen stays on the step that names it, and the drafting step draws none", () => {
   assert.equal(
     recipientsFlow.$referenced_components["recipients-generate"].metadata.cinatra.renderer,
     "@cinatra-ai/email-recipient-selection-agent:output",
   );
-  assert.equal(
-    draftsFlow.$referenced_components["drafts-draft"].metadata.cinatra.renderer,
-    "@cinatra-ai/email-drafting-agent:output",
-  );
+  assert.equal(draftsFlow.$referenced_components["drafts-draft"].metadata.cinatra.renderer, undefined);
 });
 
 // ---------------------------------------------------------------------------
-// (3) the review stops fed with what they review, the three decisions applied
+// (3) the review stops fed with what they review
 // ---------------------------------------------------------------------------
 
 const DECISIONS = ["approve", "revise", "reject"];
@@ -185,50 +202,54 @@ test("(3) the recipients review is fed the recipients it reviews", () => {
   assert.ok(hasDataEdge(recipientsFlow, "recipients-generate.recipientCount", "recipients-review_gate.recipientCount"));
 });
 
-test("(3) the drafts review is fed the bodies it reviews, as artifacts", () => {
-  const gate = pauses.get("drafts-approval_gate");
-  const schema = gate.metadata.cinatra.inputMessageSchema;
-  assert.equal(schema["x-renderer"], "@cinatra-ai/email-drafting-agent:email-drafts-review");
-  const bodies = schema.properties.draftBodyArtifacts;
-  assert.ok(bodies, "the gate is not fed the draft bodies");
-  assert.equal(bodies["x-artifact-kind"], "@cinatra-ai/email:body");
-  assert.ok(hasDataEdge(draftsFlow, "drafts-draft.draftBodyArtifacts", "drafts-approval_gate.draftBodyArtifacts"));
+test("(3) the drafts review is fed the bodies it reviews, as filed email bodies", () => {
+  const file = draftsFlow.$referenced_components["drafts-file_drafts"];
+  assert.equal(file.data.tool, "artifact_materialize");
+  assert.equal(file.data.input.objectTypeId, "@cinatra-ai/email:body");
+  assert.equal(file.data.input.node_id, "drafts-file_drafts");
+  const gate = pauses.get(REVIEWED);
+  assert.equal(gate.metadata.cinatra.surfaceGateInputs, true);
+  assert.ok(gate.inputs.some((i) => i.title === "reviewTargets"));
+  assert.ok(hasDataEdge(draftsFlow, "drafts-file_drafts.reviewTargets", "drafts-approval_gate.reviewTargets"));
+  assert.ok(hasEdge(draftsFlow, "drafts-file_drafts", "drafts-approval_gate"), "the review does not follow the filing");
 });
 
-test("(3) both reviews apply the three decisions", () => {
-  for (const id of ["recipients-review_gate", "drafts-approval_gate"]) {
-    const schema = pauses.get(id).metadata.cinatra.inputMessageSchema;
-    assert.deepEqual(schema.properties.decision.enum, DECISIONS, `the "${id}" review does not offer the three decisions`);
-    assert.ok(schema.required.includes("decision"), `the "${id}" review does not require a decision`);
-  }
+test("(3) the recipients review applies the three decisions, and the drafts review requires an answer", () => {
+  const schema = pauses.get("recipients-review_gate").metadata.cinatra.inputMessageSchema;
+  assert.deepEqual(schema.properties.decision.enum, DECISIONS, "the recipients review does not offer the three decisions");
+  assert.ok(schema.required.includes("decision"), "the recipients review does not require a decision");
+  const drafts = pauses.get(REVIEWED).metadata.cinatra;
+  assert.equal(drafts.requiresApproval, true);
+  assert.deepEqual(drafts.inputMessageSchema.required, ["userResponse"]);
 });
 
 // ---------------------------------------------------------------------------
-// (4) the send confirmation before the send
+// (4) the publish stop before the send
 // ---------------------------------------------------------------------------
 
-test("(4) the confirmation stands before the send, not after it", () => {
-  // The read-only prepare step stands before the confirmation: it hands the gate the
-  // content digest the send start carries (cinatra-ai/cinatra#3745). It sends nothing.
-  assert.ok(hasEdge(deliveryFlow, "sender-start", "sender-prepare"), "the run does not reach the read-only prepare step first");
-  assert.ok(hasEdge(deliveryFlow, "sender-prepare", "sender-approval_gate"), "the prepare step does not lead to the confirmation");
-  assert.equal(deliveryFlow.$referenced_components["sender-prepare"].metadata.cinatra.riskClass, "read_only");
-  assert.ok(hasEdge(deliveryFlow, "sender-approval_gate", "sender-file_recipients"), "the confirmation does not gate the send");
-  assert.ok(hasEdge(deliveryFlow, "sender-file_recipients", "sender-send"), "the send does not follow the recipient filing");
-  assert.ok(hasEdge(deliveryFlow, "sender-send", "sender-end"));
-  assert.ok(!hasEdge(deliveryFlow, "sender-send", "sender-approval_gate"), "the confirmation still stands after the send");
+test("(4) the send is a top-level step of the flow, after the prepared send and the person's release", () => {
+  // The delivery copy prepares the send and sends nothing: it files the
+  // recipient records and reads what the send mails. The send is carried to the
+  // top level, where the application stops the run in front of it.
+  assert.ok(hasEdge(deliveryFlow, "sender-start", "sender-file_recipients"));
+  assert.ok(hasEdge(deliveryFlow, "sender-file_recipients", "sender-resolve_send"));
+  assert.ok(hasEdge(deliveryFlow, "sender-resolve_send", "sender-end"));
+  assert.equal(deliveryFlow.$referenced_components["sender-resolve_send"].metadata.cinatra.riskClass, "read_only");
+  assert.equal(deliveryFlow.$referenced_components["sender-send"], undefined, "the send is still nested in the copy");
+  assert.ok(hasEdge(oas, "sender_flow", "send"), "the send does not follow the prepared send");
+  assert.ok(hasEdge(oas, "send", "campaign_summary"));
+  assert.deepEqual(edges(oas).filter(([, to]) => to === "send").map(([from]) => from), ["sender_flow"]);
+  assert.equal(send.metadata.cinatra.requiresApproval, false, "a second approval stands beside the publish card");
 });
 
 test("(4) the campaign id and the sender mailbox are carried to the send step", () => {
-  const send = deliveryFlow.$referenced_components["sender-send"];
   const titles = send.inputs.map((i) => i.title);
   assert.ok(titles.includes("campaignId"), "the send step is not given the campaign id");
   assert.ok(titles.includes("senderEmail"), "the send step is not given the sender mailbox");
-  assert.ok(deliveryFlow.inputs.some((i) => i.title === "campaignId"), "the send subflow takes no campaign id");
-  assert.ok(hasDataEdge(deliveryFlow, "sender-start.campaignId", "sender-send.campaignId"));
-  assert.ok(hasDataEdge(deliveryFlow, "sender-start.senderEmail", "sender-send.senderEmail"));
-  assert.ok(hasDataEdge(oas, "context_setup.campaignId", "sender_flow.campaignId"), "the campaign id never reaches the send subflow");
-  assert.match(send.data.user, /campaignId/, "the send step does not pass the campaign id on");
+  assert.ok(hasDataEdge(oas, "context_setup.campaignId", "send.campaignId"), "the campaign id never reaches the send");
+  assert.ok(hasDataEdge(oas, "start.senderEmail", "send.senderEmail"), "the sender mailbox never reaches the send");
+  assert.equal(send.data.input.senderEmail, "{{ senderEmail }}");
+  assert.match(send.data.input.campaignId, /\{\{ campaignId \}\}$/, "the send step does not pass the campaign id on");
 });
 
 // ---------------------------------------------------------------------------
@@ -257,11 +278,11 @@ test("(6) the run ends stating the campaign's results", () => {
   const summary = refs.campaign_summary;
   assert.ok(summary, "the run has no closing statement");
   assert.equal(summary.component_type, "OutputMessageNode");
-  assert.ok(hasEdge(oas, "sender_flow", "campaign_summary"), "the closing statement does not follow the send");
+  assert.ok(hasEdge(oas, "send", "campaign_summary"), "the closing statement does not follow the send");
   assert.ok(hasEdge(oas, "campaign_summary", "end"), "the closing statement does not reach the end");
-  assert.ok(!hasEdge(oas, "sender_flow", "end"), "the run can still end without stating its results");
+  assert.ok(!hasEdge(oas, "send", "end") && !hasEdge(oas, "sender_flow", "end"), "the run can still end without stating its results");
   const outputs = refs.end.outputs.map((o) => o.title);
-  for (const title of ["campaignId", "recipientCount", "sendResult"]) {
+  for (const title of ["campaignId", "recipientCount", "status", "sentCount", "errorMessage", "alreadySentCount", "inDoubtCount"]) {
     assert.ok(outputs.includes(title), `the end node does not carry ${title}`);
   }
 });

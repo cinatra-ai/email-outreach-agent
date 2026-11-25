@@ -99,7 +99,7 @@ test("neither the manifest nor the flow definition mentions the retired reviewer
 // 2. User control preserved — every hold still present.
 // ---------------------------------------------------------------------------
 
-test("both review gate steps survive the retirement, served by the email pack renderers", () => {
+test("both review gate steps survive the retirement: the recipients review on its pack screen, the drafts review on the application's review card", () => {
   const gateStep = (nodeId, name) => {
     const steps = refs[nodeId].metadata.cinatra.gateSteps;
     const found = steps.find((s) => s.name === name);
@@ -115,10 +115,16 @@ test("both review gate steps survive the retirement, served by the email pack re
   assert.equal(recipients.gateCount, 1);
   assert.equal(recipients.hitlOwnedBy, "self");
 
+  // The drafts review is one gateStep spanning one pause (what the application
+  // asks of a FlowNode that wraps a child's artifact-review gate); it names no
+  // screen, because the application draws the review card for the filed bodies.
   const drafts = gateStep("drafts_flow", "Review drafts");
-  assert.equal(drafts.renderer, "@cinatra-ai/email-drafting-agent:email-drafts-review");
+  assert.equal(refs.drafts_flow.metadata.cinatra.gateSteps.length, 1);
+  assert.equal(drafts.renderer, undefined);
   assert.equal(drafts.gateCount, 1);
   assert.equal(drafts.hitlOwnedBy, "self");
+  const gate = refs["email-drafting-subflow"].$referenced_components["drafts-approval_gate"];
+  assert.deepEqual(gate.metadata.cinatra.artifactReview, { targetsInput: "reviewTargets" });
 });
 
 test("every human hold the flow used to park at is still present", () => {
@@ -130,14 +136,20 @@ test("every human hold the flow used to park at is still present", () => {
   // into the start form, so the same three fields are asked BEFORE the run
   // begins instead of at a pause one step in. The control the person had is
   // asserted below on the start form itself.
+  //
+  // The send confirmation is no longer a gate of the flow: since cinatra#3089
+  // the send is the flow's one top-level publishing step, and the application
+  // stops the run in front of it on its publish card.
   for (const id of [
     "recipients-scope_gate",
     "recipients-review_gate",
     "drafts-approval_gate",
-    "sender-approval_gate",
   ]) {
     assert.ok(inputMessageNodes.get(id), `the "${id}" hold is gone`);
   }
+  assert.equal(inputMessageNodes.get("sender-approval_gate"), undefined, "a second confirmation stands beside the publish card");
+  assert.equal(refs.send.metadata.cinatra.publishes, true, "the publish stop in front of the send is gone");
+  assert.ok(oas.nodes.some((n) => n.$component_ref === "send"), "the send is not a top-level step");
 });
 
 test("the setup hold survives as the start form the run opens with", () => {
@@ -147,14 +159,13 @@ test("the setup hold survives as the start form the run opens with", () => {
   for (const field of ["offeringCompanyWebsite", "callToAction", "senderName"]) {
     assert.ok(titles.includes(field), `the start form stopped asking for ${field}`);
   }
-  assert.deepEqual(start.metadata.cinatra.required, ["offeringCompanyWebsite", "callToAction", "senderName"]);
+  assert.deepEqual(start.metadata.cinatra.required, ["offeringCompanyWebsite", "callToAction", "senderName", "senderEmail"]);
 });
 
 test("the holds that require an explicit approval still require it", () => {
   for (const id of [
     "recipients-review_gate",
     "drafts-approval_gate",
-    "sender-approval_gate",
   ]) {
     assert.equal(
       inputMessageNodes.get(id).metadata.cinatra.requiresApproval,
@@ -164,10 +175,15 @@ test("the holds that require an explicit approval still require it", () => {
   }
 });
 
-test("the external send is still gated behind an explicit approval", () => {
-  const send = refs["email-delivery-subflow"].$referenced_components["sender-send"];
+test("the external send is still gated behind an explicit approval: the person's release on the publish card", () => {
+  const send = refs.send;
   assert.equal(send.metadata.cinatra.riskClass, "email_send");
-  assert.equal(send.metadata.cinatra.requiresApproval, true);
+  // The publish card is the one approval in front of the send: the application
+  // stops the run in front of a top-level step that declares publishes: true
+  // and lets it run only after the person released the send.
+  assert.equal(send.metadata.cinatra.publishes, true);
+  assert.equal(send.metadata.cinatra.requiresApproval, false);
+  assert.ok(oas.nodes.some((n) => n.$component_ref === "send"));
 });
 
 // ---------------------------------------------------------------------------
@@ -197,12 +213,10 @@ test("every advertised HITL screen is served by this package or a declared depen
   }
 });
 
-test("the two review gate renderers are advertised as HITL screens", () => {
-  for (const id of [
-    "@cinatra-ai/email-recipient-selection-agent:campaign-recipients-review",
-    "@cinatra-ai/email-drafting-agent:email-drafts-review",
-  ]) {
-    assert.ok(flowMeta.hitlScreens.includes(id), `hitlScreens is missing "${id}"`);
+test("the recipients review renderer is advertised as a HITL screen, and no screen the flow no longer draws is", () => {
+  assert.ok(flowMeta.hitlScreens.includes("@cinatra-ai/email-recipient-selection-agent:campaign-recipients-review"));
+  for (const id of flowMeta.hitlScreens) {
+    assert.ok(rendererIds.has(id), `hitlScreens advertises "${id}", which no step of the flow draws`);
   }
 });
 

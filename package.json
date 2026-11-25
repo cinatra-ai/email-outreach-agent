@@ -117,6 +117,12 @@
         "midRunHitl": true
       }
     ],
+    "produces": [
+      {
+        "extension": "@cinatra-ai/email-artifacts",
+        "objectTypeId": "@cinatra-ai/email:body"
+      }
+    ],
     "consumes": []
   }
 }

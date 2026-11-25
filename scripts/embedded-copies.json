@@ -97,9 +97,9 @@
     "prefix": "drafts-",
     "package": "@cinatra-ai/email-drafting-agent",
     "repository": "cinatra-ai/email-drafting-agent",
-    "commit": "4f94101aebfc13fd29886890a8fe66135d8b3637",
+    "commit": "e94f016cf9cf420408b342adbcc6569615b77877",
     "snapshot": "scripts/children/email-drafting-agent.oas.json",
-    "blob": "39c728d4b5af5228f79ac6217481ba946eab5b68",
+    "blob": "ef5f8ecc6ac9aae598f54ee29005166ecf984c4a",
     "declared": [
       {
         "child": "cinatra-ai/email-drafting-agent",
@@ -111,7 +111,7 @@
         "child": "cinatra-ai/email-drafting-agent",
         "kind": "omit-flow-key",
         "key": "metadata",
-        "reason": "It carries the child's own produces declaration; the parent's manifest declares the run's."
+        "reason": "It carries the child's own package name and produces declaration; the parent's manifest declares the run's production, and the parent's FlowNode names the child package."
       },
       {
         "child": "cinatra-ai/email-drafting-agent",
@@ -124,21 +124,14 @@
         "kind": "omit-output",
         "step": "end",
         "output": "draftBundle",
-        "reason": "The outreach hands its delivery the drafts by the saved bundle's reference, which the apply step updates in place; nothing in the outreach reads the bundle itself."
-      },
-      {
-        "child": "cinatra-ai/email-drafting-agent",
-        "kind": "omit-output",
-        "step": "end",
-        "output": "draftBundleDocument",
-        "reason": "The outreach's run keeps the artifacts it files today; its send reads the reviewed drafts from the saved bundle, which the apply step updates in place."
+        "reason": "The outreach hands its delivery the drafts by the saved bundle's reference and the reviewed bodies by their revisions; nothing in the outreach reads the bundle itself."
       },
       {
         "child": "cinatra-ai/email-drafting-agent",
         "kind": "control-edge",
-        "from": "apply",
+        "from": "approval_gate",
         "to": "end",
-        "reason": "Joins the apply step to the end, where the child runs its closing sentence."
+        "reason": "Joins the review to the end: the child's closing sentence is left out, and the outreach goes on to its delivery copy."
       },
       {
         "child": "cinatra-ai/email-drafting-agent",
@@ -153,7 +146,7 @@
         "step": "draft",
         "path": "data.system",
         "text": "\"draftBundleTitle\":\"<short title, e.g. Email draft bundle (N recipients)>\",",
-        "reason": "The outreach's drafting step keeps its instructions and its result as they are today, so its output screen shows what it shows today."
+        "reason": "Nothing in the outreach reads a bundle title: its delivery and its send take the saved bundle by its reference, so the drafting step neither writes a title nor hands one on."
       },
       {
         "child": "cinatra-ai/email-drafting-agent",
@@ -161,28 +154,28 @@
         "step": "draft",
         "path": "data.user",
         "text": "\n- campaignId: {{ campaignId }}",
-        "reason": "The outreach's drafting step keeps its instructions and its result as they are today, so its output screen shows what it shows today."
+        "reason": "The drafting step does not use the campaign: its instructions name none, and the copy files each body with the campaign the start hands its filing step."
       },
       {
         "child": "cinatra-ai/email-drafting-agent",
         "kind": "omit-input",
         "step": "draft",
         "input": "campaignId",
-        "reason": "The outreach's drafting step keeps its instructions and its result as they are today, so its output screen shows what it shows today."
+        "reason": "The drafting step does not use the campaign: its instructions name none, and the copy files each body with the campaign the start hands its filing step."
       },
       {
         "child": "cinatra-ai/email-drafting-agent",
         "kind": "omit-output",
         "step": "draft",
         "output": "draftBundleTitle",
-        "reason": "The outreach's drafting step keeps its instructions and its result as they are today, so its output screen shows what it shows today."
+        "reason": "Nothing in the outreach reads a bundle title: its delivery and its send take the saved bundle by its reference, so the drafting step neither writes a title nor hands one on."
       },
       {
         "child": "cinatra-ai/email-drafting-agent",
         "kind": "omit-output",
         "step": "end",
         "output": "draftBundleTitle",
-        "reason": "The outreach's drafting step keeps its instructions and its result as they are today, so its output screen shows what it shows today."
+        "reason": "Nothing in the outreach reads a bundle title: its delivery and its send take the saved bundle by its reference, so the drafting step neither writes a title nor hands one on."
       }
     ]
   },
@@ -191,9 +184,9 @@
     "prefix": "sender-",
     "package": "@cinatra-ai/email-delivery-agent",
     "repository": "cinatra-ai/email-delivery-agent",
-    "commit": "17d3d7838b0ce5c36d746056ab84ab292cf2ac5f",
+    "commit": "0505839ee69da8672c6b62d4d11ad7138809421e",
     "snapshot": "scripts/children/email-delivery-agent.oas.json",
-    "blob": "0c8fca30152b8d5379585df6afdb93857b9d678a",
+    "blob": "3a91369cba0a30973847213854dea6aa5e92ba54",
     "declared": [
       {
         "child": "cinatra-ai/email-delivery-agent",
@@ -209,126 +202,122 @@
       },
       {
         "child": "cinatra-ai/email-delivery-agent",
-        "kind": "omit-key",
-        "step": "prepare",
-        "path": "data.cinatra_llm",
-        "reason": "The outreach's steps keep the model preference they have today."
-      },
-      {
-        "child": "cinatra-ai/email-delivery-agent",
-        "kind": "omit-text",
-        "step": "prepare",
-        "path": "data.system",
-        "text": " This step exists so the operator can review the REAL recipient/draft counts at the confirmation gate before approving the send.",
-        "reason": "The copy keeps the prepare step for the content digest only: its summary is not handed to the confirmation, so the step does not say that the operator sees it there."
-      },
-      {
-        "child": "cinatra-ai/email-delivery-agent",
-        "kind": "omit-text",
-        "step": "prepare",
-        "path": "outputs.0.description",
-        "text": "The pre-send summary the confirmation gate surfaces. ",
-        "reason": "The copy keeps the prepare step for the content digest only: its summary is not handed to the confirmation, so the step does not say that the operator sees it there."
-      },
-      {
-        "child": "cinatra-ai/email-delivery-agent",
-        "kind": "omit-text",
-        "step": "prepare",
-        "path": "metadata.cinatra.description",
-        "text": " Its summary is what the confirmation gate surfaces to the operator.",
-        "reason": "The copy keeps the prepare step for the content digest only: its summary is not handed to the confirmation, so the step does not say that the operator sees it there."
-      },
-      {
-        "child": "cinatra-ai/email-delivery-agent",
         "kind": "omit-step",
         "step": "delivery_summary",
         "reason": "The child's closing sentence; the outreach ends once, in its campaign summary."
       },
       {
         "child": "cinatra-ai/email-delivery-agent",
+        "kind": "omit-step",
+        "step": "send",
+        "reason": "The send is the child's one publishing step, and the application stops a run in front of a publishing step only when it is a top-level step of the root flow, so the send is not nested in the copy; the group's hoist carries it unchanged to the outreach flow's top level."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "omit-output",
+        "step": "end",
+        "output": "sendStatus",
+        "reason": "The send's answer is the hoisted send's, not the copy's; the copy ends once the send is prepared, and the outreach reads the answer from the send."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "omit-output",
+        "step": "end",
+        "output": "sentCount",
+        "reason": "The send's answer is the hoisted send's, not the copy's; the copy ends once the send is prepared, and the outreach reads the answer from the send."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "omit-output",
+        "step": "end",
+        "output": "sendErrorMessage",
+        "reason": "The send's answer is the hoisted send's, not the copy's; the copy ends once the send is prepared, and the outreach reads the answer from the send."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "omit-output",
+        "step": "end",
+        "output": "alreadySentCount",
+        "reason": "The send's answer is the hoisted send's, not the copy's; the copy ends once the send is prepared, and the outreach reads the answer from the send."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "omit-output",
+        "step": "end",
+        "output": "inDoubtCount",
+        "reason": "The send's answer is the hoisted send's, not the copy's; the copy ends once the send is prepared, and the outreach reads the answer from the send."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
         "kind": "omit-input",
-        "step": "approval_gate",
-        "input": "summary",
-        "reason": "The outreach's confirmation is not handed the prepare step's summary, so its Recipients and Drafts rows show a dash and not a count, as they do today."
+        "step": "start",
+        "input": "senderEmail",
+        "reason": "Only the send takes the sender, and the outreach collects it on its own start form and hands it to the hoisted send; the copy prepares the recipients and the emails and needs none."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "add-output",
+        "step": "end",
+        "from": "resolve_send",
+        "output": "recipients",
+        "reason": "The copy hands on what the read step resolved, which the hoisted send takes as its inputs and its publish card shows; the output declaration is the read step's own."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "add-output",
+        "step": "end",
+        "from": "resolve_send",
+        "output": "emailBodies",
+        "reason": "The copy hands on what the read step resolved, which the hoisted send takes as its inputs and its publish card shows; the output declaration is the read step's own."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "add-output",
+        "step": "end",
+        "from": "resolve_send",
+        "output": "callToAction",
+        "reason": "The copy hands on what the read step resolved, which the hoisted send takes as its inputs and its publish card shows; the output declaration is the read step's own."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "data-edge",
+        "from": "resolve_send",
+        "to": "end",
+        "output": "recipients",
+        "input": "recipients",
+        "reason": "Feeds the copy's end output from the read step."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "data-edge",
+        "from": "resolve_send",
+        "to": "end",
+        "output": "emailBodies",
+        "input": "emailBodies",
+        "reason": "Feeds the copy's end output from the read step."
+      },
+      {
+        "child": "cinatra-ai/email-delivery-agent",
+        "kind": "data-edge",
+        "from": "resolve_send",
+        "to": "end",
+        "output": "callToAction",
+        "input": "callToAction",
+        "reason": "Feeds the copy's end output from the read step."
       },
       {
         "child": "cinatra-ai/email-delivery-agent",
         "kind": "control-edge",
-        "from": "send",
+        "from": "resolve_send",
         "to": "end",
-        "reason": "Joins the send to the copy's end: the child's closing sentence is left out, and the outreach runs its own campaign summary after the copy."
-      },
+        "reason": "Joins the read step to the copy's end: the send is hoisted out of the copy, and the outreach runs it after the copy."
+      }
+    ],
+    "hoist": [
       {
-        "child": "cinatra-ai/email-delivery-agent",
-        "kind": "copy-value",
         "step": "send",
-        "path": "metadata.cinatra.requiresApproval",
-        "value": true,
-        "reason": "The outreach's send is gated by its own approval flag; the child's is false because its confirmation stands before it."
-      },
-      {
-        "child": "cinatra-ai/email-delivery-agent",
-        "kind": "copy-value",
-        "step": "send",
-        "path": "data.system",
-        "value": "You are the email campaign sender. The person has already confirmed this send at the send-confirmation gate, which stands before this step. Do not ask for another confirmation, and do not wait for one. Your one task is to run the confirmed send and report its result.\n\n1. You may read the two references, at most once each: objects_get({ objectId: confirmedRecipientsRef }) for the confirmed recipients and objects_get({ objectId: approvedDraftBundleRef }) for the approved draft bundle. If a reference is missing or has the wrong typeHint, do not call the start tool: your final answer has \"status\": \"failed\" and a summary that names the reference that could not be read.\n\n2. Call email_outreach_send_initial_start exactly once, with exactly these five arguments and no other key: campaignId, senderEmail, approvedDraftBundleRef, confirmedRecipientsRef and contentDigest. Pass every value exactly as the input gives it, character for character: these are the values the person confirmed at the gate, and the send is refused when a key is missing, added or changed. When an input is empty, pass JSON null for that key, because the gate carries an empty value as null; never leave a key out and never fill in a value of your own. Never call the start tool a second time. If the start call returns an error instead of a result, the send failed: do not poll, and your final answer has \"status\": \"failed\" and a summary that says the send could not be started.\n\n3. If the start result's status is \"completed\" or \"failed\", use it and do not poll. Only when it is neither, call email_outreach_send_initial_status with { campaignId }, at most 2 times, and stop at the first \"completed\" or \"failed\".\n\n4. If the polls end without \"completed\" or \"failed\", the send failed: your final answer has \"status\": \"failed\", \"errorCode\": \"POLL_BUDGET_EXHAUSTED\" and a summary that says the result of the send could not be confirmed.\n\n5. End with one final answer that is only the JSON {\"sendResult\": {\"status\": \"completed\" | \"failed\", \"errorCode\": \"POLL_BUDGET_EXHAUSTED\" | \"\", \"summary\": \"<one sentence: how many messages went out, or what stopped the send>\"}}, with no prose and no Markdown. All three members are always present. Use \"status\": \"completed\" only when the start or status result was \"completed\", and \"status\": \"failed\" for every send that did not complete. Use \"errorCode\": \"POLL_BUDGET_EXHAUSTED\" only when the polls ended without \"completed\" or \"failed\"; in every other final answer, errorCode is the empty string. The summary is one sentence.",
-        "reason": "The child's send text returns a seven-member result and carries notes about its own road; the outreach's send runs the same confirmed send with the same read, start and status tools, writes its own poll limit and failure shapes, and returns the status and summary that its campaign ending reads, with an errorCode that names a send whose result could not be confirmed."
-      },
-      {
-        "child": "cinatra-ai/email-delivery-agent",
-        "kind": "copy-value",
-        "step": "send",
-        "path": "data.user",
-        "value": "The person confirmed this send at the send-confirmation gate. Run the campaign send now and return the result as JSON.\nInputs:\n- campaignId: {{ campaignId }}\n- approvedDraftBundleRef: {{ approvedDraftBundleRef }}\n- confirmedRecipientsRef: {{ confirmedRecipientsRef }}\n- senderEmail: {{ senderEmail }}\n- contentDigest: {{ contentDigest }}",
-        "reason": "The child's send text returns a seven-member result and carries notes about its own road; the outreach's send runs the same confirmed send with the same read, start and status tools, writes its own poll limit and failure shapes, and returns the status and summary that its campaign ending reads, with an errorCode that names a send whose result could not be confirmed."
-      },
-      {
-        "child": "cinatra-ai/email-delivery-agent",
-        "kind": "omit-key",
-        "step": "send",
-        "path": "data.cinatra_llm",
-        "reason": "The outreach's steps keep the model preference they have today."
-      },
-      {
-        "child": "cinatra-ai/email-delivery-agent",
-        "kind": "omit-key",
-        "step": "send",
-        "path": "metadata.cinatra.description",
-        "reason": "The child's send step is written for the child's own prepare-and-confirm road and returns a seven-member result; the outreach's send keeps its instructions and its result, which its campaign ending reads."
-      },
-      {
-        "child": "cinatra-ai/email-delivery-agent",
-        "kind": "omit-key",
-        "step": "send",
-        "path": "metadata.cinatra.packageName",
-        "reason": "The child's send step is written for the child's own prepare-and-confirm road and returns a seven-member result; the outreach's send keeps its instructions and its result, which its campaign ending reads."
-      },
-      {
-        "child": "cinatra-ai/email-delivery-agent",
-        "kind": "copy-value",
-        "step": "send",
-        "path": "outputs",
-        "value": [
-          {
-            "title": "sendResult",
-            "type": "object",
-            "json_schema": {
-              "type": "object",
-              "properties": {
-                "status": {
-                  "type": "string"
-                },
-                "errorCode": {
-                  "type": "string"
-                },
-                "summary": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        ],
-        "reason": "The child's send step is written for the child's own prepare-and-confirm road and returns a seven-member result; the outreach's send returns three of those members: the status and summary that its campaign ending reads, and the errorCode that names a send whose result could not be confirmed."
+        "as": "send",
+        "declared": []
       }
     ]
   }

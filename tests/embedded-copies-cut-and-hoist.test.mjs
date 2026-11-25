@@ -16,16 +16,18 @@
 // It also refuses a copy whose steps name an input or an output they do not
 // have (the "dangling reference" rule of the delivery pack's parity test).
 //
-// The end-to-end arm feeds the delivery pack's flow at its merged commit
-// (cinatra-ai/email-delivery-agent 0505839ee69da8672c6b62d4d11ad7138809421e,
-// cinatra/oas.json blob 3a91369cba0a30973847213854dea6aa5e92ba54, copied to
-// tests/fixtures/email-delivery-agent-0505839-oas.json) through the generator
-// and compares the result with the two fixtures the delivery pack ships at that
-// commit (tests/fixtures/email-outreach-delivery-subflow.json, blob
+// The end-to-end arm feeds the committed delivery snapshot
+// (scripts/children/email-delivery-agent.oas.json: cinatra-ai/email-delivery-agent
+// 0505839ee69da8672c6b62d4d11ad7138809421e, cinatra/oas.json blob
+// 3a91369cba0a30973847213854dea6aa5e92ba54, also kept as
+// tests/fixtures/email-delivery-agent-0505839-oas.json) through the committed
+// delivery group of scripts/embedded-copies.json and compares the result with
+// the two fixtures the delivery pack ships at that commit
+// (tests/fixtures/email-outreach-delivery-subflow.json, blob
 // 9088997b3ba33352ec16404029e5d92eef580952, and
 // tests/fixtures/email-outreach-delivery-send.json, blob
-// 2afd560692886e6d45ec3dfab4bbfa4f47269792), byte for byte. The committed
-// snapshot under scripts/children/ is not replaced here.
+// 2afd560692886e6d45ec3dfab4bbfa4f47269792), byte for byte, and with what the
+// committed outreach flow carries.
 // ---------------------------------------------------------------------------
 
 import { test } from "node:test";
@@ -242,13 +244,17 @@ test("(3089) omit-input on a start step refuses an input the start or the flow d
   refused(() => generateCopy(source, group([entry("omit-input", { step: "start", input: "b" })])), "org/child", "(omit-input)", "flow input 'b'");
 });
 
-test("(3089) no existing group uses omit-input on a start step, so the stricter rule changes no committed copy", () => {
+test("(3089) only the delivery group uses omit-input on a start step, and its copy keeps no trace of the sender", () => {
+  const onStart = [];
   for (const group of loadList()) {
     const source = loadChild(group);
     for (const declared of group.declared.filter((e) => e.kind === "omit-input")) {
-      assert.notEqual(source.$referenced_components[declared.step]?.component_type, "StartNode", `${group.repository} ${declared.step}`);
+      if (source.$referenced_components[declared.step]?.component_type === "StartNode") onStart.push(`${group.copyId} ${declared.input}`);
     }
   }
+  assert.deepEqual(onStart, ["email-delivery-subflow senderEmail"]);
+  const committed = JSON.parse(readFileSync(path.join(ROOT, "cinatra", "oas.json"), "utf8")).$referenced_components["email-delivery-subflow"];
+  assert.equal(JSON.stringify(committed).includes("senderEmail"), false, "the committed delivery copy still names the sender");
 });
 
 // --- the dangling reference rule ---------------------------------------------
@@ -393,58 +399,56 @@ test("(3089) a hoist refuses an absent step, a step kept in the copy, and an id 
 // --- end to end: the delivery pack at its merged commit -----------------------
 
 const DELIVERY = "cinatra-ai/email-delivery-agent";
-const d = (kind, fields, reason) => ({ child: DELIVERY, kind, ...fields, reason });
-const SEND_ANSWER = "The send's answer is the hoisted send's, not the copy's; the copy ends once the send is prepared.";
-const RESOLVED = "The copy hands on what the read step resolved, which the hoisted send takes as its inputs; the output declaration is the read step's own.";
+const shape = (kind, fields) => ({ child: DELIVERY, kind, ...fields });
 
-/** The delivery group's 17 entries and its hoist, as the second part writes them into scripts/embedded-copies.json. */
-const deliveryGroup = {
-  copyId: "email-delivery-subflow",
-  prefix: "sender-",
-  package: "@cinatra-ai/email-delivery-agent",
-  repository: DELIVERY,
-  declared: [
-    d("omit-flow-key", { key: "description" }, "It describes the child package; the outreach declares the run's screens and package once."),
-    d("omit-flow-key", { key: "metadata" }, "It is the child package's own metadata; the outreach declares the run's screens and package once."),
-    d("omit-step", { step: "delivery_summary" }, "The child's closing sentence; the outreach ends once, in its campaign summary."),
-    d("omit-step", { step: "send" }, "The send is the child's one publishing step and is carried to the outreach's top level by the group's hoist."),
-    ...["sendStatus", "sentCount", "sendErrorMessage", "alreadySentCount", "inDoubtCount"].map((output) =>
-      d("omit-output", { step: "end", output }, SEND_ANSWER),
-    ),
-    d("omit-input", { step: "start", input: "senderEmail" }, "Only the send takes the sender; the copy needs none."),
-    ...["recipients", "emailBodies", "callToAction"].map((output) => d("add-output", { step: "end", from: "resolve_send", output }, RESOLVED)),
-    ...["recipients", "emailBodies", "callToAction"].map((output) =>
-      d("data-edge", { from: "resolve_send", to: "end", output, input: output }, "Feeds the copy's end output from the read step."),
-    ),
-    d("control-edge", { from: "resolve_send", to: "end" }, "The copy ends after the read step; the hoisted send runs after the copy."),
-  ],
-  hoist: [{ step: "send", as: "send", declared: [] }],
-};
+/** The delivery group's 17 entries, reasons aside, and its hoist. */
+const DELIVERY_SHAPE = [
+  shape("omit-flow-key", { key: "description" }),
+  shape("omit-flow-key", { key: "metadata" }),
+  shape("omit-step", { step: "delivery_summary" }),
+  shape("omit-step", { step: "send" }),
+  ...["sendStatus", "sentCount", "sendErrorMessage", "alreadySentCount", "inDoubtCount"].map((output) => shape("omit-output", { step: "end", output })),
+  shape("omit-input", { step: "start", input: "senderEmail" }),
+  ...["recipients", "emailBodies", "callToAction"].map((output) => shape("add-output", { step: "end", from: "resolve_send", output })),
+  ...["recipients", "emailBodies", "callToAction"].map((output) => shape("data-edge", { from: "resolve_send", to: "end", output, input: output })),
+  shape("control-edge", { from: "resolve_send", to: "end" }),
+];
 
-test("(3089) the delivery flow at its merged commit gives exactly the delivery pack's two fixtures", () => {
-  const source = readFileSync(path.join(ROOT, "tests", "fixtures", "email-delivery-agent-0505839-oas.json"));
-  assert.equal(gitBlobSha(source), "3a91369cba0a30973847213854dea6aa5e92ba54", "the fixture is not the delivery flow at 0505839");
-  const deliveryChild = JSON.parse(source.toString("utf8"));
+/** The committed delivery group of scripts/embedded-copies.json. */
+const deliveryGroup = loadList().find((group) => group.copyId === "email-delivery-subflow");
+
+test("(3089) the committed delivery snapshot and group give exactly the delivery pack's two fixtures and the committed flow", () => {
+  assert.equal(deliveryGroup.repository, DELIVERY);
+  assert.equal(deliveryGroup.commit, "0505839ee69da8672c6b62d4d11ad7138809421e");
+  assert.equal(deliveryGroup.blob, "3a91369cba0a30973847213854dea6aa5e92ba54");
+  const source = readFileSync(path.join(ROOT, deliveryGroup.snapshot));
+  assert.equal(gitBlobSha(source), deliveryGroup.blob, "the snapshot is not the delivery flow at 0505839");
+  assert.ok(source.equals(readFileSync(path.join(ROOT, "tests", "fixtures", "email-delivery-agent-0505839-oas.json"))));
+  const deliveryChild = loadChild(deliveryGroup);
   const subflowText = fixture("email-outreach-delivery-subflow.json");
   const sendText = fixture("email-outreach-delivery-send.json");
   assert.equal(gitBlobSha(Buffer.from(subflowText)), "9088997b3ba33352ec16404029e5d92eef580952");
   assert.equal(gitBlobSha(Buffer.from(sendText)), "2afd560692886e6d45ec3dfab4bbfa4f47269792");
   assert.equal(deliveryGroup.declared.length, 17);
+  assert.deepEqual(deliveryGroup.declared.map(({ reason, ...rest }) => rest), DELIVERY_SHAPE);
+  assert.ok(deliveryGroup.declared.every((entry) => typeof entry.reason === "string" && entry.reason.trim() !== ""));
+  assert.deepEqual(deliveryGroup.hoist, [{ step: "send", as: "send", declared: [] }]);
 
   assert.equal(serialize(generateCopy(deliveryChild, deliveryGroup)), subflowText);
   const hoists = generateHoists(deliveryChild, deliveryGroup);
   assert.deepEqual(hoists.map((h) => h.as), ["send"]);
   assert.equal(serialize(hoists[0].node), sendText);
 
-  // Through the parent: the outreach flow as it is today takes the copy in place and the send as a new
-  // component of its own; the parent's node list is the parent's and stays as it is.
+  // Through the parent: the committed outreach flow carries the copy in place and the send at its top level.
   const outreach = JSON.parse(readFileSync(path.join(ROOT, "cinatra", "oas.json"), "utf8"));
-  assert.equal(Object.hasOwn(outreach.$referenced_components, "send"), false);
+  assert.equal(Object.hasOwn(outreach.$referenced_components, "send"), true);
+  assert.equal(serialize(outreach.$referenced_components["email-delivery-subflow"]), subflowText);
+  assert.equal(serialize(outreach.$referenced_components.send), sendText);
+  assert.ok(outreach.nodes.some((node) => refOf(node) === "send"), "the parent does not list the send among its nodes");
   const flow = generateFlow(outreach, [deliveryGroup], [deliveryChild]);
   assert.equal(serialize(flow.$referenced_components["email-delivery-subflow"]), subflowText);
   assert.equal(serialize(flow.$referenced_components.send), sendText);
   assert.deepEqual(flow.nodes, outreach.nodes, "the generator changed the parent's nodes");
-  assert.ok(!flow.nodes.some((node) => refOf(node) === "send"), "the generator placed the send in the node list");
 });
 
 test("(3089) a hoist does not overwrite the outreach flow's own hand-authored step of the same kind", () => {
@@ -494,7 +498,7 @@ test("(3089) a hoist appended after a last component with a non-ASCII id is writ
 });
 
 test("(3089) each of the delivery group's entries is needed: leaving one out changes or refuses the copy", () => {
-  const deliveryChild = JSON.parse(fixture("email-delivery-agent-0505839-oas.json"));
+  const deliveryChild = loadChild(deliveryGroup);
   const subflowText = fixture("email-outreach-delivery-subflow.json");
   for (const [at] of deliveryGroup.declared.entries()) {
     const fewer = { ...deliveryGroup, declared: deliveryGroup.declared.filter((_, i) => i !== at) };
