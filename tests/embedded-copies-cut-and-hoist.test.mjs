@@ -447,3 +447,97 @@ test("(3089) each of the delivery group's entries is needed: leaving one out cha
     assert.notEqual(text, subflowText, `entry ${at + 1} changes nothing`);
   }
 });
+
+// --- id-bound fields and own names ----------------------------------------------
+
+/** The small child with one filing step `file_a` (its data an object, or a text when `text` is set). */
+function filingChild(text = null) {
+  const source = child();
+  const data = { tool: "artifact_materialize", input: { content: "{{ a }}", node_id: "file_a" } };
+  source.$referenced_components.file_a = {
+    component_type: "ApiNode",
+    id: "file_a",
+    name: "file_a",
+    url: "{{CINATRA_BASE_URL}}/api/file",
+    http_method: "POST",
+    data: text ?? data,
+    inputs: [{ title: "a", type: "string" }],
+    outputs: [],
+  };
+  return source;
+}
+const fileGroup = (as) =>
+  group([entry("omit-step", { step: "file_a" })], { hoist: [{ step: "file_a", as, declared: [] }] });
+
+test("(3089) a hoisted filing step under a new id carries the new id into its node_id and its id-named name", () => {
+  const [hoisted] = generateHoists(filingChild(), fileGroup("top_file"));
+  assert.equal(hoisted.node.id, "top_file");
+  assert.equal(hoisted.node.name, "top_file");
+  assert.equal(hoisted.node.data.input.node_id, "top_file");
+  // A text-form filing step keeps every byte but the node_id token.
+  const text = '{\r\n  "tool": "artifact_materialize",\t"input": {"node_id": "file_a", "n": 1.50}\r\n}';
+  const [fromText] = generateHoists(filingChild(text), fileGroup("top_file"));
+  assert.equal(fromText.node.data, text.replace('"file_a"', '"top_file"'));
+});
+
+test("(3089) a hoist under the child's own id changes nothing but the id, byte for byte", () => {
+  const escaped = '{"tool": "artifact_materialize", "input": {"node_id": "file\\u005fa"}}';
+  const source = filingChild(escaped);
+  const [hoisted] = generateHoists(source, fileGroup("file_a"));
+  assert.equal(serialize(hoisted.node), serialize(source.$referenced_components.file_a));
+});
+
+test("(3089) a hoist under the id __proto__ is an own component of the parent, written and checked", () => {
+  const g = group(cut(entry("control-edge", { from: "work", to: "end" })), { hoist: [{ step: "pub", as: "__proto__", declared: [] }] });
+  const before = parent();
+  const flow = generateFlow(before, [g], [child()]);
+  const rc = flow.$referenced_components;
+  assert.ok(Object.hasOwn(rc, "__proto__"), "the hoist is not an own component");
+  assert.equal(Object.getPrototypeOf(rc), Object.prototype, "the components' prototype changed");
+  assert.equal(rc.__proto__.id, "__proto__");
+  const first = writeCopies(serialize(before), flow, [g]);
+  assert.equal(first, serialize(flow));
+  assert.ok(Object.hasOwn(JSON.parse(first).$referenced_components, "__proto__"));
+  assert.equal(writeCopies(first, generateFlow(JSON.parse(first), [g], [child()]), [g]), first);
+});
+
+test("(3089) a step named __proto__ is hoisted, and absent names such as constructor are refused as absent", () => {
+  const source = JSON.parse(JSON.stringify(child()).replaceAll('"pub"', '"__proto__"'));
+  assert.ok(Object.hasOwn(source.$referenced_components, "__proto__"));
+  const g = group([entry("omit-step", { step: "__proto__" }), entry("omit-output", { step: "end", output: "done" })], {
+    hoist: [{ step: "__proto__", as: "top", declared: [] }],
+  });
+  const [hoisted] = generateHoists(source, g);
+  assert.equal(hoisted.node.id, "top");
+  assert.equal(hoisted.node.name, "Publish");
+  for (const name of ["constructor", "hasOwnProperty", "__proto__"]) {
+    refused(
+      () => generateCopy(child(), group(cut(entry("add-output", { step: "end", from: name, output: "r" })))),
+      `step '${name}' is absent`,
+    );
+    refused(() => generateHoists(child(), group([], { hoist: [{ step: name, as: "x", declared: [] }] })), `step '${name}' is absent`);
+    const edge = child();
+    edge.data_flow_connections[2].source_node = { $component_ref: name };
+    refused(() => generateCopy(edge, group([])), "joins a step that is absent");
+  }
+});
+
+test("(3089) a hoist's add-value under the key __proto__ stores an own member", () => {
+  const g = hoistGroup([
+    { step: "pub", as: "pub", declared: [entry("add-value", { step: "pub", path: "metadata.cinatra.__proto__", value: { x: 1 } })] },
+  ]);
+  const [hoisted] = generateHoists(child(), g);
+  assert.ok(Object.hasOwn(hoisted.node.metadata.cinatra, "__proto__"));
+  assert.equal(Object.getPrototypeOf(hoisted.node.metadata.cinatra), Object.prototype);
+  assert.match(serialize(hoisted.node), /"__proto__": \{/);
+});
+
+test("(3089) omit-input on a start step removes an input named __proto__ from the start's own maps and lists", () => {
+  const source = JSON.parse(JSON.stringify(child()).replaceAll('"b"', '"__proto__"'));
+  const meta = source.$referenced_components.start.metadata.cinatra;
+  assert.ok(Object.hasOwn(meta.inputTitles, "__proto__"));
+  const made = generateCopy(source, group([entry("omit-step", { step: "pub" }), entry("omit-input", { step: "start", input: "__proto__" })]));
+  const start = made.$referenced_components["p-start"];
+  assert.deepEqual(start.metadata.cinatra, { required: ["a"], inputTitles: { a: "A" } });
+  assert.deepEqual(made.inputs.map((i) => i.title), ["a"]);
+});

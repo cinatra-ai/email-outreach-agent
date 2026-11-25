@@ -20,8 +20,10 @@
 //
 // A group may also HOIST child steps (its field `hoist`, a list of
 // { step, as, declared }): each is written as a component of the PARENT flow
-// under the id `as`, the child's step byte for byte but for its id and the
-// differences its own `declared` list names (empty: verbatim). The parent owns
+// under the id `as`: the child's step byte for byte but for its id and the
+// fields bound to it (a filing step's node_id, a name equal to the id), which
+// take `as` (nothing else changes when `as` is the child's own id), and the
+// differences its own `declared` list names (empty: none). The parent owns
 // the node's place in its nodes list and its edges; the generator adds none. A
 // hoisted step must be left out of the copy by an omit-step entry.
 //
@@ -111,6 +113,15 @@ function walkRefs(node, visit) {
 }
 
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+
+/** The value an object stores under `key` as its OWN member, or undefined: never one of Object.prototype's. */
+const ownValue = (object, key) =>
+  object !== null && typeof object === "object" && Object.hasOwn(object, key) ? object[key] : undefined;
+
+/** Stores `value` as an own member `key` (in its place when present), never through a setter such as __proto__. */
+function setOwn(object, key, value) {
+  Object.defineProperty(object, key, { value, writable: true, enumerable: true, configurable: true });
+}
 
 /** The members of the JSON object that starts at `at`: each key (decoded) with
  * the [start, end) offsets of its value token, in the order written. The text
@@ -219,7 +230,7 @@ function moveStepId(step, to, fail) {
 }
 
 function stepOf(flow, stepId, fail) {
-  const step = flow.$referenced_components?.[stepId];
+  const step = ownValue(flow.$referenced_components, stepId);
   if (!step) fail(`step '${stepId}' is absent`);
   return step;
 }
@@ -348,7 +359,7 @@ function applyEntry(flow, entry, fail) {
       if (node === null || typeof node !== "object" || Array.isArray(node)) fail(`path '${entry.path}' is absent`);
       const last = keys[keys.length - 1];
       if (Object.hasOwn(node, last)) fail(`'${entry.step}.${entry.path}' is already present`);
-      node[last] = clone(entry.value);
+      setOwn(node, last, clone(entry.value));
       return;
     }
     case "control-edge": {
@@ -397,7 +408,7 @@ function applyEntry(flow, entry, fail) {
       const step = stepOf(flow, entry.step, fail);
       if (Object.hasOwn(rc, entry.to)) fail(`step '${entry.to}' already exists`);
       const renamed = {};
-      for (const [key, value] of Object.entries(rc)) renamed[key === entry.step ? entry.to : key] = value;
+      for (const [key, value] of Object.entries(rc)) setOwn(renamed, key === entry.step ? entry.to : key, value);
       flow.$referenced_components = renamed;
       moveStepId(step, entry.to, fail);
       const token = new RegExp(`(^|_to_)${escapeRegExp(entry.step)}(?=_|$)`, "g");
@@ -515,8 +526,8 @@ export function danglingNames(flow) {
   }
   for (const step of Object.values(steps)) found.push(...stepDangling(step));
   for (const edge of flow.data_flow_connections ?? []) {
-    const from = steps[refOf(edge.source_node)];
-    const to = steps[refOf(edge.destination_node)];
+    const from = ownValue(steps, refOf(edge.source_node));
+    const to = ownValue(steps, refOf(edge.destination_node));
     if (!from || !to) {
       found.push(`edge ${edge.name} joins a step that is absent`);
       continue;
@@ -562,13 +573,15 @@ function checkedHoists(child, group) {
 
 /**
  * One child flow plus its group -> the steps the group hoists into the parent:
- * [{ as, node }], each node the child's step with its id set to `as` and the
- * differences its own declared list names, and nothing else.
+ * [{ as, node }], each node the child's step with its id, and the fields bound
+ * to its id, set to `as`, and the differences its own declared list names, and
+ * nothing else.
  */
 export function generateHoists(child, group) {
   return checkedHoists(child, group).map(({ item, fail }) => {
     const node = clone(child.$referenced_components[item.step]);
-    const holder = { $referenced_components: { [item.step]: node } };
+    const holder = { $referenced_components: {} };
+    setOwn(holder.$referenced_components, item.step, node);
     item.declared.forEach((entry, at) => {
       const failEntry = (why) => fail(`declared entry ${at + 1} (${entry?.kind}): ${why}`);
       if (!isObject(entry)) failEntry("it is not an object");
@@ -578,7 +591,10 @@ export function generateHoists(child, group) {
       if (entry.step !== item.step) failEntry(`it names the step '${entry.step}', not the hoisted '${item.step}'`);
       applyEntry(holder, entry, failEntry);
     });
-    node.id = item.as;
+    // The id and the fields bound to it (a filing step's node_id, a name that is the id) follow `as`,
+    // as they follow a copy's prefix; under the child's own id nothing else changes.
+    if (item.as === node.id) node.id = item.as;
+    else moveStepId(node, item.as, fail);
     const found = stepDangling(node);
     if (found.length > 0) fail(`the hoisted step names what it does not have: ${found.join("; ")}`);
     return { as: item.as, node };
@@ -589,7 +605,7 @@ function prefixFlow(flow, prefix, fail) {
   const refs = {};
   for (const [key, step] of Object.entries(flow.$referenced_components)) {
     moveStepId(step, prefix + step.id, fail);
-    refs[prefix + key] = step;
+    setOwn(refs, prefix + key, step);
   }
   flow.$referenced_components = refs;
   // Every $component_ref gets the prefix once, the ones inside the steps included.
@@ -634,7 +650,7 @@ export function generateFlow(parent, list, children) {
     if (!Object.hasOwn(rc, group.copyId)) {
       throw new Error(`${group.repository}: the flow carries no copy '${group.copyId}'`);
     }
-    rc[group.copyId] = generateCopy(children[index], group);
+    setOwn(rc, group.copyId, generateCopy(children[index], group));
   });
   const copyIds = new Set(list.map((group) => group.copyId));
   const hoisted = new Set();
@@ -646,11 +662,11 @@ export function generateFlow(parent, list, children) {
       if (copyIds.has(as)) fail(`the id '${as}' collides with an embedded copy of the parent`);
       if (hoisted.has(as)) fail(`the id '${as}' collides with another group's hoist`);
       hoisted.add(as);
-      const existing = rc[as];
+      const existing = ownValue(rc, as);
       if (Object.hasOwn(rc, as) && !(isObject(existing) && existing.id === as && existing.component_type === node.component_type)) {
         fail(`the id '${as}' collides with a component of the parent that is not this hoist's step`);
       }
-      rc[as] = node;
+      setOwn(rc, as, node);
     });
   });
   return flow;
@@ -730,13 +746,13 @@ export function writeCopies(text, generated, list) {
   let out = text;
   for (const id of generatedIds(list)) {
     if (!Object.hasOwn(JSON.parse(out).$referenced_components, id)) {
-      out = appendComponent(out, id, generated.$referenced_components[id]);
+      out = appendComponent(out, id, ownValue(generated.$referenced_components, id));
       continue;
     }
     const [start, end] = valueSpan(out, ["$referenced_components", id]);
     const lineStart = out.lastIndexOf("\n", start) + 1;
     const indent = /^[ \t]*/.exec(out.slice(lineStart, start))[0];
-    const copyText = serialize(generated.$referenced_components[id]).trimEnd().split("\n").join(`\n${indent}`);
+    const copyText = serialize(ownValue(generated.$referenced_components, id)).trimEnd().split("\n").join(`\n${indent}`);
     out = out.slice(0, start) + copyText + out.slice(end);
   }
   return out;
@@ -782,7 +798,8 @@ function main(argv) {
   const differing = generatedIds(list)
     .filter(
       (id) =>
-        JSON.stringify(committed.$referenced_components[id]) !== JSON.stringify(generated.$referenced_components[id]),
+        JSON.stringify(ownValue(committed.$referenced_components, id)) !==
+        JSON.stringify(ownValue(generated.$referenced_components, id)),
     );
   for (const id of differing) process.stderr.write(`embedded-copies: ${id} differs from its child\n`);
   if (differing.length === 0) {
