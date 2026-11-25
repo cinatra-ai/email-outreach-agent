@@ -1,0 +1,212 @@
+{
+  "component_type": "ApiNode",
+  "id": "send",
+  "name": "Send campaign emails",
+  "url": "{{CINATRA_BASE_URL}}/api/agents/passthrough",
+  "http_method": "POST",
+  "data": {
+    "tool": "email_outreach_send_initial_start",
+    "input": {
+      "campaignId": "{# pyagentspec-input-hint (do not remove): {{ emailBodies }} {{ recipients }} {{ callToAction }} #}{{ campaignId }}",
+      "senderEmail": "{{ senderEmail }}",
+      "approvedDraftBundleRef": "{{ approvedDraftBundleRef }}",
+      "confirmedRecipientsRef": "{{ confirmedRecipientsRef }}"
+    },
+    "agent_run_id": "{{ agent_run_id }}"
+  },
+  "inputs": [
+    {
+      "title": "campaignId",
+      "type": "string",
+      "default": "",
+      "json_schema": {
+        "format": "uuid"
+      }
+    },
+    {
+      "title": "approvedDraftBundleRef",
+      "type": "string",
+      "default": "",
+      "json_schema": {
+        "format": "uuid"
+      }
+    },
+    {
+      "title": "confirmedRecipientsRef",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "title": "senderEmail",
+      "type": "string"
+    },
+    {
+      "title": "agent_run_id",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "title": "recipients",
+      "type": "array",
+      "description": "The recipients the send mails, as the read step resolved them from the approved draft bundle and the confirmed recipient list: one line per mailed draft with its name, email, company and the subject of its email. These are the addresses the send start addresses; when the workspace's development-mode recipient override is on, the email pipeline mails the override address instead, which the card's Recipients row does not show",
+      "json_schema": {
+        "type": "array",
+        "maxItems": 50,
+        "minItems": 1,
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "email": {
+              "type": "string"
+            },
+            "company": {
+              "type": "string"
+            },
+            "subject": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "title": "emailBodies",
+      "type": "array",
+      "description": "The approved email bodies the send mails, as the read step joined them to the approved drafts: per mailed draft one artifact revision, the contact of its draft, and the address and the subject the card's Recipients row shows for that draft. The publish card's Emails row shows this list, and it is the one input of this step that has these five members and no other: the send start reads it from the publish decision a person released, in this order, and refuses the whole send before any mail when a message's contact, address or subject differs from its entry; the address is compared byte for byte after its outer white space is removed, so another case is another address",
+      "json_schema": {
+        "type": "array",
+        "maxItems": 50,
+        "minItems": 1,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "artifactId": {
+              "type": "string"
+            },
+            "representationRevisionId": {
+              "type": "string"
+            },
+            "contactId": {
+              "type": "string"
+            },
+            "recipientEmail": {
+              "type": "string"
+            },
+            "subject": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "artifactId",
+            "representationRevisionId",
+            "contactId",
+            "recipientEmail",
+            "subject"
+          ]
+        }
+      }
+    },
+    {
+      "title": "callToAction",
+      "type": "string",
+      "description": "The call to action of the emails, as the read step handed it on after it found it in the text of every body the send mails; the publish card shows it"
+    }
+  ],
+  "outputs": [
+    {
+      "title": "status",
+      "type": "string",
+      "default": "",
+      "description": "The status the send start answered: completed, or failed when the send stopped; the empty string when the answer carried none."
+    },
+    {
+      "title": "sentCount",
+      "type": "integer",
+      "default": 0,
+      "description": "The number of messages the send start reports as sent."
+    },
+    {
+      "title": "operationId",
+      "type": "string",
+      "default": "",
+      "description": "The operation identifier the send start answered."
+    },
+    {
+      "title": "errorMessage",
+      "type": "string",
+      "default": "",
+      "description": "What stopped a failed send, as the send start answered it; the empty string for a completed send."
+    },
+    {
+      "title": "alreadySentCount",
+      "type": "integer",
+      "default": 0,
+      "description": "The number of messages an earlier call of the send start had already sent, which this call skipped; 0 when the answer carries none."
+    },
+    {
+      "title": "inDoubtCount",
+      "type": "integer",
+      "default": 0,
+      "description": "The number of messages whose send was started and never confirmed: the send start does not mail them again, and a person checks with the mail provider whether they went out; 0 when the answer carries none."
+    }
+  ],
+  "metadata": {
+    "cinatra": {
+      "riskClass": "email_send",
+      "requiresApproval": false,
+      "publishes": true,
+      "publishRows": [
+        {
+          "label": "From",
+          "input": "senderEmail"
+        },
+        {
+          "kind": "list",
+          "label": "Recipients",
+          "input": "recipients",
+          "columns": [
+            {
+              "label": "Name",
+              "field": "name"
+            },
+            {
+              "label": "Email",
+              "field": "email"
+            },
+            {
+              "label": "Company",
+              "field": "company"
+            },
+            {
+              "label": "Subject",
+              "field": "subject"
+            }
+          ]
+        },
+        {
+          "kind": "artifacts",
+          "label": "Emails",
+          "input": "emailBodies"
+        },
+        {
+          "label": "Call to action",
+          "input": "callToAction"
+        }
+      ],
+      "packageName": "@cinatra-ai/email-delivery-agent",
+      "renderer": "@cinatra-ai/email-delivery-agent:output",
+      "a2uiSurfaceId": "email-delivery:step-1:output",
+      "description": "The flow's one publishing step and a model-free call of email_outreach_send_initial_start on the deterministic passthrough road (/api/agents/passthrough). Sending an email is an external write, so the application stops the run in front of this step and shows its publish card with the four rows declared here (From, Recipients, Emails, Call to action); the run reaches the step only after the person chose to send. Every argument of the call is a template over one of this step's inputs, and every input comes by a data edge from the start node or from the read step in front of this step: the campaign, the sender and the two references from the start node. The step's other inputs, the recipients, the emails and the call to action, come from the read step and are not arguments: the application surfaces every input of the step in the publish decision, and the send start reads from it the one list of approved emails (emailBodies, the list the Emails row shows) with the campaign. No model writes an argument or a list, so the send start mails the approved body revisions the person saw, from the mailbox the card showed, to the addresses and with the subjects the card showed (each approved body names the address and the subject of its draft), and refuses the whole send before any mail when one of them does not fit its draft or a message would go to another address or with another subject. The passthrough road serves the send start only to a listed publishing step of the run's flow whose publish decision is released, once; a host whose road does not serve it answers the call with an error, the run ends and nothing is sent. The step returns the send start's answer: its status (completed or failed), the number of messages sent by this call, the operation id and, for a failed send, the reason, and the number of messages an earlier call had already sent (skipped now) and the number in doubt (started and never confirmed, not sent again; a person checks with the mail provider). requiresApproval is false because the publish card is the one approval in front of the send.",
+      "confirmations": [
+        {
+          "tool": "email_outreach_send_initial_start",
+          "decision": "publish"
+        }
+      ]
+    }
+  }
+}

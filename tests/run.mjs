@@ -19,6 +19,7 @@ import "./oas-bridge-output-declarations.test.mjs";
 import "./wayflow-mount-contract.test.mjs";
 import "./account-scope-words.test.mjs";
 import "./embedded-copy-parity.test.mjs";
+import "./embedded-copies-cut-and-hoist.test.mjs";
 import "./recipient-filing.test.mjs";
 import "./review-gates-reach-their-screens.test.mjs";
 import "./recipient-removals-are-applied.test.mjs";
