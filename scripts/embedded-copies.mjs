@@ -17,6 +17,16 @@
 // A declared entry that no longer applies to its child (a step, key, input,
 // output, text or edge endpoint the child does not have) THROWS, naming the
 // child and the entry, so a stale declaration fails the suite as well.
+//
+// A group may also HOIST child steps (its field `hoist`, a list of
+// { step, as, declared }): each is written as a component of the PARENT flow
+// under the id `as`, the child's step byte for byte but for its id and the
+// differences its own `declared` list names (empty: verbatim). The parent owns
+// the node's place in its nodes list and its edges; the generator adds none. A
+// hoisted step must be left out of the copy by an omit-step entry.
+//
+// A generated copy, and a hoisted step, whose steps name an input or an output
+// they do not have (a dangling reference) THROWS as well; see danglingNames.
 
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -33,6 +43,7 @@ export const KINDS = Object.freeze([
   "omit-step",
   "omit-output",
   "omit-input",
+  "add-output",
   "omit-key",
   "omit-text",
   "copy-value",
@@ -272,10 +283,28 @@ function applyEntry(flow, entry, fail) {
       const step = stepOf(flow, entry.step, fail);
       const at = titled(step.inputs, entry.input);
       if (at < 0) fail(`input '${entry.step}.${entry.input}' is absent`);
+      if (step.component_type === "StartNode") {
+        omitStartInput(flow, step, entry, fail);
+        return;
+      }
       step.inputs.splice(at, 1);
       flow.data_flow_connections = flow.data_flow_connections.filter(
         (e) => !(refOf(e.destination_node) === entry.step && e.destination_input === entry.input),
       );
+      return;
+    }
+    case "add-output": {
+      // The end hands on an output one of the flow's steps declares, with that step's own declaration.
+      const end = stepOf(flow, entry.step, fail);
+      if (end.component_type !== "EndNode") fail(`step '${entry.step}' is not the flow's end`);
+      const source = stepOf(flow, entry.from, fail);
+      const at = titled(source.outputs, entry.output);
+      if (at < 0) fail(`output '${entry.from}.${entry.output}' is absent`);
+      if (titled(end.outputs, entry.output) >= 0) fail(`the end '${entry.step}' already declares the output '${entry.output}'`);
+      if (titled(flow.outputs, entry.output) >= 0) fail(`the flow already declares the output '${entry.output}'`);
+      const declaration = source.outputs[at];
+      end.outputs = [...(end.outputs ?? []), clone(declaration)];
+      flow.outputs = [...(flow.outputs ?? []), clone(declaration)];
       return;
     }
     case "omit-key": {
@@ -383,6 +412,179 @@ function applyEntry(flow, entry, fail) {
   }
 }
 
+/** The lists and maps of a start step's metadata.cinatra that the host reads by input name. */
+const START_METADATA_LISTS = Object.freeze(["required", "hidden"]);
+const START_METADATA_MAPS = Object.freeze(["inputRenderers", "inputTitles", "inputDataSources"]);
+
+/**
+ * omit-input on a START step removes every trace of the input: the start's
+ * inputs, the flow's inputs, the start's outputs where it declares any of that
+ * title, every data edge that leaves the start through it, and in the start's
+ * metadata.cinatra the lists required and hidden and the maps inputRenderers,
+ * inputTitles and inputDataSources (a list or map left empty is removed).
+ */
+function omitStartInput(flow, start, entry, fail) {
+  const flowAt = titled(flow.inputs, entry.input);
+  if (flowAt < 0) fail(`flow input '${entry.input}' is absent`);
+  start.inputs.splice(titled(start.inputs, entry.input), 1);
+  flow.inputs.splice(flowAt, 1);
+  if (Array.isArray(start.outputs)) start.outputs = start.outputs.filter((output) => output.title !== entry.input);
+  flow.data_flow_connections = flow.data_flow_connections.filter(
+    (e) => !(refOf(e.source_node) === entry.step && e.source_output === entry.input),
+  );
+  const meta = start.metadata?.cinatra;
+  if (!isObject(meta)) return;
+  for (const key of START_METADATA_LISTS) {
+    if (!Array.isArray(meta[key])) continue;
+    meta[key] = meta[key].filter((name) => name !== entry.input);
+    if (meta[key].length === 0) delete meta[key];
+  }
+  for (const key of START_METADATA_MAPS) {
+    if (!isObject(meta[key])) continue;
+    delete meta[key][entry.input];
+    if (Object.keys(meta[key]).length === 0) delete meta[key];
+  }
+}
+
+const TEMPLATED = Object.freeze(["ApiNode", "OutputMessageNode"]);
+
+/** The names a templated step renders: every {{ name }} in its data or message, the base url aside. */
+function renderedNames(step) {
+  const text = JSON.stringify(step.data ?? step.message ?? "");
+  return new Set(
+    [...text.matchAll(/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)/g)].map((m) => m[1]).filter((name) => name !== "CINATRA_BASE_URL"),
+  );
+}
+
+/**
+ * The input names a step takes: the titles of its inputs list when it declares
+ * one; a templated step that declares none takes the names it renders; any
+ * other step that declares none is not checked (null).
+ */
+function inputNames(step) {
+  if (Array.isArray(step.inputs)) return new Set(step.inputs.map((input) => input.title));
+  return TEMPLATED.includes(step.component_type) ? renderedNames(step) : null;
+}
+
+/** A step's own dangling names: its card rows and its templates against its own inputs. */
+function stepDangling(step) {
+  const found = [];
+  const inputs = inputNames(step) ?? new Set();
+  for (const row of step.metadata?.cinatra?.publishRows ?? []) {
+    if (!inputs.has(row.input)) found.push(`${step.id} row ${row.label} names input ${row.input}`);
+  }
+  if (TEMPLATED.includes(step.component_type)) {
+    for (const name of renderedNames(step)) if (!inputs.has(name)) found.push(`${step.id} renders ${name}, which is no input of it`);
+  }
+  return found;
+}
+
+/**
+ * Every name a flow's steps use that the step does not have (the rule the
+ * delivery pack's parity test applies to the copy it expects): the start's
+ * metadata (required, hidden, and the maps keyed by input name) against the
+ * start's inputs, the flow's inputs against the start's, a step's card rows
+ * and its call and message templates against the step's own inputs, and each
+ * data edge's two ends against the outputs and inputs of the steps it joins (a
+ * start gives its inputs, an end takes its outputs). A step that declares no
+ * inputs list takes what its templates render (see inputNames); a source that
+ * declares no outputs list, or a destination whose inputs are not known, is
+ * not checked at that end.
+ */
+export function danglingNames(flow) {
+  const found = [];
+  const steps = flow.$referenced_components ?? {};
+  const names = (list) => new Set((list ?? []).map((entry) => entry.title));
+  const start = Object.values(steps).find((step) => step.component_type === "StartNode");
+  if (start) {
+    const have = names(start.inputs);
+    const meta = start.metadata?.cinatra ?? {};
+    for (const key of START_METADATA_LISTS) {
+      for (const name of Array.isArray(meta[key]) ? meta[key] : []) {
+        if (!have.has(name)) found.push(`${start.id}.metadata.cinatra.${key} names ${name}`);
+      }
+    }
+    for (const key of START_METADATA_MAPS) {
+      for (const name of Object.keys(isObject(meta[key]) ? meta[key] : {})) {
+        if (!have.has(name)) found.push(`${start.id}.metadata.cinatra.${key} names ${name}`);
+      }
+    }
+    const own = [...names(flow.inputs)].sort().join();
+    const startOwn = [...have].sort().join();
+    if (own !== startOwn) found.push(`the flow's inputs (${own}) differ from the start's (${startOwn})`);
+  }
+  for (const step of Object.values(steps)) found.push(...stepDangling(step));
+  for (const edge of flow.data_flow_connections ?? []) {
+    const from = steps[refOf(edge.source_node)];
+    const to = steps[refOf(edge.destination_node)];
+    if (!from || !to) {
+      found.push(`edge ${edge.name} joins a step that is absent`);
+      continue;
+    }
+    const gives = from.component_type === "StartNode" ? names(from.inputs) : Array.isArray(from.outputs) ? names(from.outputs) : null;
+    const takes = to.component_type === "EndNode" ? names(to.outputs) : inputNames(to);
+    if (gives && !gives.has(edge.source_output)) found.push(`edge ${edge.name}: ${from.id} has no ${edge.source_output}`);
+    if (takes && !takes.has(edge.destination_input)) found.push(`edge ${edge.name}: ${to.id} has no ${edge.destination_input}`);
+  }
+  return found;
+}
+
+/** The step-level kinds a hoist's own list may name: a difference inside the node itself. */
+const HOIST_KINDS = Object.freeze(["omit-key", "omit-text", "copy-value", "add-value"]);
+
+/**
+ * The group's hoists, checked: each names a step the child has, a new id that
+ * no other hoist of the group uses and that is not the group's copy, a list of
+ * its own differences, and the step is left out of the copy by an omit-step
+ * entry of the group.
+ */
+function checkedHoists(child, group) {
+  if (group.hoist === undefined) return [];
+  if (!Array.isArray(group.hoist)) throw new Error(`${group.repository}: the hoist field is not a list`);
+  const seen = new Set();
+  return group.hoist.map((item, index) => {
+    const fail = (why) => {
+      throw new Error(`${group.repository}: hoist ${index + 1} (step '${item?.step}' as '${item?.as}') no longer applies: ${why}`);
+    };
+    if (!isObject(item)) fail("it is not an object");
+    if (typeof item.step !== "string" || item.step === "") fail("it names no step");
+    if (typeof item.as !== "string" || item.as === "") fail("it names no id");
+    if (!Array.isArray(item.declared)) fail("it carries no declared list");
+    if (seen.has(item.as)) fail(`the id '${item.as}' is hoisted more than once`);
+    seen.add(item.as);
+    if (item.as === group.copyId) fail(`the id '${item.as}' collides with the group's copy`);
+    if (!Object.hasOwn(child.$referenced_components ?? {}, item.step)) fail(`step '${item.step}' is absent`);
+    const omitted = (group.declared ?? []).some((entry) => entry.kind === "omit-step" && entry.step === item.step);
+    if (!omitted) fail(`step '${item.step}' is kept in the copy: a hoisted step is left out of it by an omit-step entry`);
+    return { item, fail };
+  });
+}
+
+/**
+ * One child flow plus its group -> the steps the group hoists into the parent:
+ * [{ as, node }], each node the child's step with its id set to `as` and the
+ * differences its own declared list names, and nothing else.
+ */
+export function generateHoists(child, group) {
+  return checkedHoists(child, group).map(({ item, fail }) => {
+    const node = clone(child.$referenced_components[item.step]);
+    const holder = { $referenced_components: { [item.step]: node } };
+    item.declared.forEach((entry, at) => {
+      const failEntry = (why) => fail(`declared entry ${at + 1} (${entry?.kind}): ${why}`);
+      if (!isObject(entry)) failEntry("it is not an object");
+      if (entry.child !== group.repository) failEntry(`it names the child '${entry.child}'`);
+      if (typeof entry.reason !== "string" || entry.reason.trim() === "") failEntry("it carries no reason");
+      if (!HOIST_KINDS.includes(entry.kind)) failEntry(`a hoist names only differences inside its node (${HOIST_KINDS.join(", ")})`);
+      if (entry.step !== item.step) failEntry(`it names the step '${entry.step}', not the hoisted '${item.step}'`);
+      applyEntry(holder, entry, failEntry);
+    });
+    node.id = item.as;
+    const found = stepDangling(node);
+    if (found.length > 0) fail(`the hoisted step names what it does not have: ${found.join("; ")}`);
+    return { as: item.as, node };
+  });
+}
+
 function prefixFlow(flow, prefix, fail) {
   const refs = {};
   for (const [key, step] of Object.entries(flow.$referenced_components)) {
@@ -399,6 +601,7 @@ function prefixFlow(flow, prefix, fail) {
 
 /** One child flow plus its list entry -> the embedded copy the outreach carries. */
 export function generateCopy(child, group) {
+  checkedHoists(child, group);
   const flow = clone(child);
   (group.declared ?? []).forEach((entry, index) => {
     const fail = (why) => {
@@ -412,19 +615,50 @@ export function generateCopy(child, group) {
     throw new Error(`${group.repository}: ${why}`);
   });
   flow.id = group.copyId;
+  const found = danglingNames(flow);
+  if (found.length > 0) {
+    throw new Error(`${group.repository}: the generated copy names what its steps do not have: ${found.join("; ")}`);
+  }
   return flow;
 }
 
-/** The parent flow with its three embedded copies replaced by the generated ones. */
+/**
+ * The parent flow with its embedded copies replaced by the generated ones and
+ * each hoisted step written under its id: in its place when the parent already
+ * carries it, else after the parent's other components.
+ */
 export function generateFlow(parent, list, children) {
   const flow = clone(parent);
+  const rc = flow.$referenced_components;
   list.forEach((group, index) => {
-    if (!Object.hasOwn(flow.$referenced_components, group.copyId)) {
+    if (!Object.hasOwn(rc, group.copyId)) {
       throw new Error(`${group.repository}: the flow carries no copy '${group.copyId}'`);
     }
-    flow.$referenced_components[group.copyId] = generateCopy(children[index], group);
+    rc[group.copyId] = generateCopy(children[index], group);
+  });
+  const copyIds = new Set(list.map((group) => group.copyId));
+  const hoisted = new Set();
+  list.forEach((group, index) => {
+    generateHoists(children[index], group).forEach(({ as, node }, at) => {
+      const fail = (why) => {
+        throw new Error(`${group.repository}: hoist ${at + 1} (step '${group.hoist[at].step}' as '${as}') no longer applies: ${why}`);
+      };
+      if (copyIds.has(as)) fail(`the id '${as}' collides with an embedded copy of the parent`);
+      if (hoisted.has(as)) fail(`the id '${as}' collides with another group's hoist`);
+      hoisted.add(as);
+      const existing = rc[as];
+      if (Object.hasOwn(rc, as) && !(isObject(existing) && existing.id === as && existing.component_type === node.component_type)) {
+        fail(`the id '${as}' collides with a component of the parent that is not this hoist's step`);
+      }
+      rc[as] = node;
+    });
   });
   return flow;
+}
+
+/** Every id the generator writes into the parent's components: each copy, then each hoist. */
+export function generatedIds(list) {
+  return list.flatMap((group) => [group.copyId, ...(Array.isArray(group.hoist) ? group.hoist.map((item) => item.as) : [])]);
 }
 
 function skipSpace(text, i) {
@@ -488,19 +722,38 @@ export function valueSpan(text, keys) {
 }
 
 /**
- * The flow text with ONLY the three copies replaced by the generated ones;
- * every other byte of the text is kept as it is.
+ * The flow text with ONLY the copies and the hoisted steps replaced by the
+ * generated ones; every other byte of the text is kept as it is. A hoisted step
+ * the text does not carry yet is added as the last member of the components.
  */
 export function writeCopies(text, generated, list) {
   let out = text;
-  for (const group of list) {
-    const [start, end] = valueSpan(out, ["$referenced_components", group.copyId]);
+  for (const id of generatedIds(list)) {
+    if (!Object.hasOwn(JSON.parse(out).$referenced_components, id)) {
+      out = appendComponent(out, id, generated.$referenced_components[id]);
+      continue;
+    }
+    const [start, end] = valueSpan(out, ["$referenced_components", id]);
     const lineStart = out.lastIndexOf("\n", start) + 1;
     const indent = /^[ \t]*/.exec(out.slice(lineStart, start))[0];
-    const copyText = serialize(generated.$referenced_components[group.copyId]).trimEnd().split("\n").join(`\n${indent}`);
+    const copyText = serialize(generated.$referenced_components[id]).trimEnd().split("\n").join(`\n${indent}`);
     out = out.slice(0, start) + copyText + out.slice(end);
   }
   return out;
+}
+
+/** The text with one member added after the last member of $referenced_components, in its indentation. */
+function appendComponent(text, id, value) {
+  const [start] = valueSpan(text, ["$referenced_components"]);
+  const members = membersOf(text, start);
+  if (members.length === 0) throw new Error(`${FLOW_PATH}: the flow carries no components to add '${id}' after`);
+  const last = members[members.length - 1];
+  const keyStart = text.lastIndexOf(JSON.stringify(last.key), last.start);
+  const lineStart = text.lastIndexOf("\n", keyStart) + 1;
+  const indent = /^[ \t]*/.exec(text.slice(lineStart, keyStart))[0];
+  const valueText = serialize(value).trimEnd().split("\n").join(`\n${indent}`);
+  const member = `,\n${indent}${serialize(id).trimEnd()}: ${valueText}`;
+  return text.slice(0, last.end) + member + text.slice(last.end);
 }
 
 function main(argv) {
@@ -519,15 +772,14 @@ function main(argv) {
   if (mode === "write") {
     const written = writeCopies(committedText, generated, list);
     if (written !== committedText) writeFileSync(flowFile, written);
-    process.stdout.write(`embedded-copies: wrote ${list.map((g) => g.copyId).join(", ")} into ${FLOW_PATH}\n`);
+    process.stdout.write(`embedded-copies: wrote ${generatedIds(list).join(", ")} into ${FLOW_PATH}\n`);
     return 0;
   }
   if (text === committedText) {
     process.stdout.write(`embedded-copies: ${FLOW_PATH} carries exactly the generated copies\n`);
     return 0;
   }
-  const differing = list
-    .map((group) => group.copyId)
+  const differing = generatedIds(list)
     .filter(
       (id) =>
         JSON.stringify(committed.$referenced_components[id]) !== JSON.stringify(generated.$referenced_components[id]),
