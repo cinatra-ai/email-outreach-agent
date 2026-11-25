@@ -75,12 +75,6 @@
     "riskLevel": "low",
     "hasApprovalGates": true,
     "toolAccess": [],
-    "tools": [
-      {
-        "name": "saved_drafts",
-        "module": "./cinatra/tools/saved-drafts.mjs"
-      }
-    ],
     "ownerOrgId": null,
     "fieldRenderers": [
       {
@@ -115,6 +109,12 @@
         "kind": "email-drafts-review",
         "priority": 70,
         "midRunHitl": true
+      }
+    ],
+    "produces": [
+      {
+        "extension": "@cinatra-ai/email-artifacts",
+        "objectTypeId": "@cinatra-ai/email:body"
       }
     ],
     "consumes": []
