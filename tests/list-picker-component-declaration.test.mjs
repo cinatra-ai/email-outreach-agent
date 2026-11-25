@@ -62,6 +62,57 @@ test("the embedded recipient selection copy is taken from the commit that reads 
   assert.equal(group.commit, RECIPIENT_SELECTION_COMMIT);
 });
 
+// The recipient selection package declares this same binding, and the
+// application refuses two declarations of one binding that differ (kind,
+// priority, flags, params and component). Its version 0.1.4 named three
+// different declarations of it, so only a version floor above 0.1.4 can
+// require the one below. Fixture: the declaration of
+// cinatra-ai/email-recipient-selection-agent at commit ef807294 (params and
+// component), which its version 0.1.5 is the first to carry for every commit
+// (its test "the package version is at least the first version that carries
+// this declaration"). The embedded flow copy is pinned at 0c0517fb; the child's
+// cinatra/oas.json is the same blob there and at ef807294.
+const CHILD_FIRST_VERSION_WITH_THIS_DECLARATION = "0.1.5";
+const CHILD_DECLARATION_AT_EF807294 = {
+  id: "@cinatra-ai/email-outreach-agent:list-picker",
+  kind: "list-picker",
+  priority: 90,
+  params: {
+    selection: "multiple",
+    minSelected: 1,
+    question: "Which views or lists in your CRM should this run take its recipients from?",
+    emptyState: "There are no views or lists in Twenty CRM to pick from yet. Create one in Twenty CRM.",
+    refreshValue: "refresh",
+  },
+  component: { entry: "./src/renderers/list-picker.ts", propsApiVersion: 1 },
+};
+
+/** The application's comparable form of a binding (agent-binding-kinds.mjs `comparableFieldRendererBinding`). */
+const comparable = (e) =>
+  JSON.stringify({
+    kind: e.kind,
+    priority: e.priority,
+    midRunHitl: e.midRunHitl === true,
+    a2uiTranslator: e.a2uiTranslator ?? null,
+    params: e.params ?? null,
+    component: e.component ?? null,
+  });
+
+test("the recipient selection range starts at the child version that carries the same declaration", () => {
+  assert.equal(comparable(binding), comparable(CHILD_DECLARATION_AT_EF807294), "this binding differs from the child's");
+  const edges = [
+    ...(pkg.cinatra.dependencies ?? []),
+    ...(pkg.cinatra.agentDependencies ?? []),
+  ].filter((edge) => edge.packageName === "@cinatra-ai/email-recipient-selection-agent");
+  assert.ok(edges.length > 0, "the manifest declares no recipient selection dependency");
+  for (const edge of edges) {
+    assert.deepEqual(edge.versionConstraint, {
+      kind: "semver-range",
+      range: `^${CHILD_FIRST_VERSION_WITH_THIS_DECLARATION}`,
+    });
+  }
+});
+
 // The application installs this package from its packed artifact, which holds
 // only what the manifest's `files` allow-list names (with package.json, the
 // README and the LICENSE). A component entry outside that list is absent from

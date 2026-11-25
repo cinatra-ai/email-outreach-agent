@@ -75,7 +75,7 @@
         "edgeType": "runtime",
         "versionConstraint": {
           "kind": "semver-range",
-          "range": "^0.1.0"
+          "range": "^0.1.5"
         },
         "requirement": "required",
         "kind": "agent"
