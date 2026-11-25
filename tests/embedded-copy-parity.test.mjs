@@ -146,6 +146,199 @@ test("(7) an add-value entry adds a value the child lacks, and refuses one the c
   refused(noValue, "no value");
 });
 
+test("(7) a filing step's own node_id follows its step id through the prefix and a rename", () => {
+  const filing = (id) => ({
+    component_type: "ApiNode",
+    id,
+    name: id,
+    data: { tool: "artifact_materialize", input: { content: "{{ x }}", node_id: id } },
+  });
+  const child = {
+    component_type: "Flow",
+    id: "child",
+    nodes: [{ $component_ref: "file_a" }, { $component_ref: "file_b" }],
+    control_flow_connections: [],
+    data_flow_connections: [],
+    $referenced_components: {
+      file_a: filing("file_a"),
+      file_b: filing("file_b"),
+      other: { component_type: "ApiNode", id: "other", name: "other", data: { tool: "objects_save", input: { node_id: "other" } } },
+    },
+  };
+  const group = {
+    repository: "org/child",
+    prefix: "p-",
+    copyId: "copy",
+    declared: [{ child: "org/child", kind: "rename-step", step: "file_b", to: "file_c", reason: "probe" }],
+  };
+  const made = generateCopy(child, group).$referenced_components;
+  // The host requires the materialize input's node_id to equal its ApiNode's id.
+  assert.equal(made["p-file_a"].data.input.node_id, "p-file_a");
+  assert.equal(made["p-file_c"].data.input.node_id, "p-file_c");
+  // Another tool's input is not a step identity and is kept as it is.
+  assert.equal(made["p-other"].data.input.node_id, "other");
+  assert.equal(child.$referenced_components.file_a.data.input.node_id, "file_a", "the child is changed");
+});
+
+/** A child flow whose steps carry their `data` as a JSON text. */
+function stringFormChild(texts) {
+  const steps = {};
+  for (const [id, text] of Object.entries(texts)) {
+    steps[id] = { component_type: "ApiNode", id, name: id, data: text(id) };
+  }
+  return {
+    component_type: "Flow",
+    id: "child",
+    nodes: Object.keys(steps).map((id) => ({ $component_ref: id })),
+    control_flow_connections: [],
+    data_flow_connections: [],
+    $referenced_components: steps,
+  };
+}
+
+const filingText = (indent, tail = "") => (id) =>
+  JSON.stringify({ tool: "artifact_materialize", input: { content: "{{ x }}", node_id: id } }, null, indent) + tail;
+const otherText = () => '{ "tool": "objects_save",  "input": {"node_id": "other"} }';
+const stringGroup = (declared = []) => ({ repository: "org/child", prefix: "p-", copyId: "copy", declared });
+
+test("(7) a string-form filing step's own node_id follows its step id through the prefix and a rename, in the form it was written", () => {
+  for (const [label, indent, tail] of [["compact", undefined, ""], ["two-space", 2, "\n"], ["four-space", 4, ""], ["tab", "\t", "\n"]]) {
+    const child = stringFormChild({ file_a: filingText(indent, tail), file_b: filingText(indent, tail), other: otherText });
+    const declared = [{ child: "org/child", kind: "rename-step", step: "file_b", to: "file_c", reason: "probe" }];
+    const made = generateCopy(child, stringGroup(declared)).$referenced_components;
+    for (const [from, to] of [["file_a", "p-file_a"], ["file_b", "p-file_c"]]) {
+      assert.equal(typeof made[to].data, "string", `${label}: the data is no longer a text`);
+      assert.equal(made[to].data, filingText(indent, tail)(to), `${label}: ${to} is not its input moved, in its own form`);
+      assert.equal(made[to].id, to);
+      assert.equal(child.$referenced_components[from].data, filingText(indent, tail)(from), "the child is changed");
+    }
+    // Another tool's input is not a step identity: its text is kept byte for byte.
+    assert.equal(made["p-other"].data, otherText());
+  }
+});
+
+test("(7) a string-form filing step whose text does not parse or whose input is not an object fails, naming the step", () => {
+  const refused = (data, text) => {
+    const child = stringFormChild({ file_a: () => data });
+    assert.throws(
+      () => generateCopy(child, stringGroup()),
+      (error) => error.message.includes("org/child") && error.message.includes("file_a") && error.message.includes(text),
+      data,
+    );
+  };
+  refused('{"tool": "artifact_materialize", "input": {"node_id": "file_a"', "does not parse");
+  refused('{"tool":"artifact_materialize","input":"{\\"node_id\\":\\"file_a\\"}"}', "input");
+});
+
+/** The data text of the one step `file_a` after a generator run with the prefix `p-`. */
+const movedText = (data, id = "file_a") =>
+  generateCopy(stringFormChild({ [id]: () => data }), stringGroup()).$referenced_components[`p-${id}`].data;
+
+test("(7) a string-form filing step written with ordinary spaces on one line is accepted and its node_id moves", () => {
+  const data = '{"tool": "artifact_materialize", "input": {"content": "{{ x }}", "node_id": "file_a"}, "mode": [1, 2]}';
+  assert.equal(movedText(data), data.replace('"node_id": "file_a"', '"node_id": "p-file_a"'));
+  const spaced = '  { "tool" : "artifact_materialize" ,"input":{ "node_id" :  "file_a" , "content":"c" } }  ';
+  assert.equal(movedText(spaced), spaced.replace('"file_a"', '"p-file_a"'));
+});
+
+test("(7) a string-form filing step with CRLF line ends keeps every CR and LF", () => {
+  const data = '{\r\n  "tool": "artifact_materialize",\r\n  "input": {\r\n    "node_id": "file_a"\r\n  }\r\n}\r\n';
+  assert.equal(movedText(data), data.replace('"file_a"', '"p-file_a"'));
+});
+
+test("(7) a string-form filing step with mixed indentation keeps it", () => {
+  const data = '{\n\t"tool": "artifact_materialize",\n  "input": {\n\t  "content": "c",\n    \t"node_id":\t"file_a"\n\n},\n \t"z": 1}\n\n';
+  assert.equal(movedText(data), data.replace('"file_a"', '"p-file_a"'));
+});
+
+test("(7) only the node_id that is a direct member of the top-level input moves", () => {
+  const data =
+    '{"early": {"input": {"node_id": "file_a"}}, "node_id": "file_a", "note": "\\"input\\": {\\"node_id\\": \\"file_a\\"}", ' +
+    '"tool": "artifact_materialize", "input": {"deep": {"node_id": "file_a", "input": {"node_id": "file_a"}}, ' +
+    '"list": [{"node_id": "file_a"}], "text": "\\"node_id\\": \\"file_a\\"", "node_id": "file_a"}, "late": {"node_id": "file_a"}}';
+  const made = movedText(data);
+  const tail = '"node_id": "file_a"}, "late"';
+  assert.ok(data.includes(tail));
+  assert.equal(made, data.replace(tail, '"node_id": "p-file_a"}, "late"'));
+  assert.equal(JSON.parse(made).input.node_id, "p-file_a");
+});
+
+test("(7) a number format, a duplicate key elsewhere and the key order survive byte for byte", () => {
+  const data =
+    '{"input": {"n": [1.0E+2, -0, 0.10, 1e5, 2E-0], "c": 1, "c": 2, "node_id": "file_a", "a": 0}, "tool": "artifact_materialize", "tool": "artifact_materialize"}';
+  assert.equal(movedText(data), data.replace('"node_id": "file_a"', '"node_id": "p-file_a"'));
+});
+
+test("(7) a duplicate input or node_id member in a filing text fails, naming the step", () => {
+  for (const data of [
+    '{"tool": "artifact_materialize", "input": {"node_id": "file_a", "node_id": "file_a"}}',
+    '{"tool": "artifact_materialize", "input": {"node_id": "file_a"}, "input": {"node_id": "file_a"}}',
+    '{"tool": "artifact_materialize", "input": {"node_id": "file_a"}, "in\\u0070ut": {"node_id": "file_a"}}',
+  ]) {
+    assert.throws(
+      () => movedText(data),
+      (error) => error.message.includes("org/child") && error.message.includes("file_a") && error.message.includes("more than once"),
+      data,
+    );
+  }
+});
+
+test("(7) a node_id token written with \\u escapes is replaced by a token in that style", () => {
+  const data = '{"tool": "artifact_materialize", "input": {"node_id": "file\\u005fa"}}';
+  assert.equal(movedText(data), '{"tool": "artifact_materialize", "input": {"node_id": "p-file_a"}}');
+  const accented = '{"tool": "artifact_materialize", "input": {"node_id": "d\\u00e9"}}';
+  assert.equal(movedText(accented, "d\u00e9"), '{"tool": "artifact_materialize", "input": {"node_id": "p-d\\u00e9"}}');
+  const plain = '{"tool": "artifact_materialize", "input": {"node_id": "d\u00e9"}}';
+  assert.equal(movedText(plain, "d\u00e9"), '{"tool": "artifact_materialize", "input": {"node_id": "p-d\u00e9"}}');
+});
+
+test("(7) a text of another tool, or a filing text whose node_id is not its own id, stays byte for byte", () => {
+  const other = '{ "tool" : "objects_save" ,\r\n "input": {"node_id":   "file_a"} }';
+  assert.equal(movedText(other), other);
+  const foreign = '{ "tool": "artifact_materialize" ,\r\n "input": {"node_id":   "elsewhere"} }';
+  assert.equal(movedText(foreign), foreign);
+  const absent = '{ "tool": "artifact_materialize" , "input": {"content": "c"} }';
+  assert.equal(movedText(absent), absent);
+});
+
+test("(7) a second generator run over an irregularly written filing text changes nothing", () => {
+  const data = '{\r\n"tool": "artifact_materialize", "input": {"node_id": "file_a",\t"n": 1.50}\r\n}';
+  const child = stringFormChild({ file_a: () => data, other: otherText });
+  const group = stringGroup();
+  const parent = {
+    component_type: "Flow",
+    id: "parent",
+    $referenced_components: { copy: { component_type: "Flow", id: "stale" }, keep: { id: "keep" } },
+  };
+  const parentText = serialize(parent);
+  const first = writeCopies(parentText, generateFlow(parent, [group], [child]), [group]);
+  const second = writeCopies(first, generateFlow(JSON.parse(first), [group], [child]), [group]);
+  assert.equal(second, first, "a second run changed the text");
+  assert.equal(
+    JSON.parse(first).$referenced_components.copy.$referenced_components["p-file_a"].data,
+    data.replace('"file_a"', '"p-file_a"'),
+  );
+});
+
+test("(7) a string-form filing step is generated byte for byte again by a second run", () => {
+  const child = stringFormChild({ file_a: filingText(2, "\n"), other: otherText });
+  const group = stringGroup();
+  const parent = {
+    component_type: "Flow",
+    id: "parent",
+    $referenced_components: { copy: { component_type: "Flow", id: "stale" }, keep: { id: "keep" } },
+  };
+  const parentText = serialize(parent);
+  const first = writeCopies(parentText, generateFlow(parent, [group], [child]), [group]);
+  const second = writeCopies(first, generateFlow(JSON.parse(first), [group], [child]), [group]);
+  assert.notEqual(first, parentText, "the first run changed nothing");
+  assert.equal(second, first, "a second run changed the text");
+  assert.equal(
+    JSON.parse(first).$referenced_components.copy.$referenced_components["p-file_a"].data,
+    filingText(2, "\n")("p-file_a"),
+  );
+});
+
 test("(7) the recipient selection copy is its child but for the declared differences", () => {
   assertCopyIsItsChild("email-recipient-selection-subflow");
 });
