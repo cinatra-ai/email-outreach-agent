@@ -19,6 +19,8 @@ import { createElement, useEffect, useRef, useState, type ReactNode } from "reac
 // is one row, the first that is a row.
 //
 // WHAT IT WRITES. One checkbox row per list, nothing ticked for the reader.
+// Each row is titled by the list's name over its detail line, the list's CRM
+// id, so two lists that share a name are told apart (design I.1).
 // Each tick or untick writes `{ listIds, listNames }`, the ticked lists in the
 // order they were ticked, with their names in the same order. Unticking the
 // last row writes both arrays empty.
@@ -69,7 +71,8 @@ import { createElement, useEffect, useRef, useState, type ReactNode } from "reac
 // `approvalNote` (cinatra-ai/cinatra packages/agents/src/orchestrator-stepper-panel.tsx
 // ReadOnlyHitlReplay hands the recorded values as they are). Any of them may
 // arrive as JSON text. The step then draws the recorded picks as read-only
-// rows, ticked, each by its name, or by its id when the name is blank; it
+// rows, ticked, each titled by its name, or by its id when the name is blank,
+// over its id as the detail line; it
 // never draws the failed-read alert or Try again for a recorded answer. The
 // design (specs/app-artifact-review.html I.1) draws no separate completed
 // state, so the rows keep the pick's own markup with the inputs disabled.
@@ -202,6 +205,33 @@ const CHECKBOX_CLASSES = "mt-[3px] size-3.5 flex-none accent-primary";
 const TRY_AGAIN_CLASSES =
   "flex-none rounded-md border border-line bg-surface-strong px-3 py-1 text-xs font-semibold text-foreground";
 
+/**
+ * A row's words: the list's name as its title, over the row's detail line
+ * (design specs/app-artifact-review.html I.1: "each row carrying the title the
+ * declaration binds over the entry's own detail line"). The detail line is the
+ * list's CRM id, the one fact the read hands the step that no two lists share,
+ * so two lists with the same name are told apart by it.
+ */
+function rowWords(list: OfferedList) {
+  return createElement(
+    "span",
+    { className: "min-w-0 flex-1" },
+    createElement(
+      "span",
+      { className: "block font-sans text-[13px] font-bold text-foreground", "data-testid": "list-picker-row-title" },
+      list.name,
+    ),
+    createElement(
+      "span",
+      {
+        className: "mt-[5px] block break-all font-mono text-[10px] tracking-[0.04em] text-muted-foreground",
+        "data-testid": "list-picker-row-detail",
+      },
+      list.id,
+    ),
+  );
+}
+
 /** The list step. */
 export default function ListPickerRenderer(props: ListPickerProps) {
   const lists = offeredLists(props.value);
@@ -284,11 +314,7 @@ export default function ListPickerRenderer(props: ListPickerProps) {
               disabled: true,
               readOnly: true,
             }),
-            createElement(
-              "span",
-              { className: "min-w-0 flex-1 font-sans text-[13px] font-bold text-foreground" },
-              list.name,
-            ),
+            rowWords(list),
           ),
         ),
       ),
@@ -355,11 +381,7 @@ export default function ListPickerRenderer(props: ListPickerProps) {
             disabled: !writes,
             onChange: () => toggle(list.id),
           }),
-          createElement(
-            "span",
-            { className: "min-w-0 flex-1 font-sans text-[13px] font-bold text-foreground" },
-            list.name,
-          ),
+          rowWords(list),
         ),
       ),
     ),

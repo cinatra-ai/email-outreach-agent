@@ -282,6 +282,36 @@ describe("the list step, mounted", () => {
     }
   });
 
+  it("two lists with the same name are two rows told apart by their ids, and each tick writes its own id", async () => {
+    const twins = [
+      { id: "view-prospects-north", name: "Prospects" },
+      { id: "view-prospects-south", name: "Prospects" },
+    ];
+    const view = await mount({ value: { lists: twins, listsRead: "ok" } });
+    try {
+      const rows = [...view.container.querySelectorAll("label")];
+      assert.equal(rows.length, 2);
+      const read = (row) => ({
+        title: row.querySelector('[data-testid="list-picker-row-title"]')?.textContent,
+        detail: row.querySelector('[data-testid="list-picker-row-detail"]')?.textContent,
+      });
+      assert.deepEqual(rows.map(read), [
+        { title: "Prospects", detail: "view-prospects-north" },
+        { title: "Prospects", detail: "view-prospects-south" },
+      ]);
+      assert.notEqual(rows[0].textContent, rows[1].textContent, "the two rows read the same");
+      await click(boxes(view.container)[1]);
+      assert.deepEqual(view.writes.at(-1), { listIds: ["view-prospects-south"], listNames: ["Prospects"] });
+      await click(boxes(view.container)[0]);
+      assert.deepEqual(view.writes.at(-1), {
+        listIds: ["view-prospects-south", "view-prospects-north"],
+        listNames: ["Prospects", "Prospects"],
+      });
+    } finally {
+      await view.unmount();
+    }
+  });
+
   it("reopened on a completed step, draws the recorded picks by name and no failed-read alert", async () => {
     const note = { type: "list", listIds: ["view-b", "view-a"], listNames: ["Trade fair leads", ""], snapshotAt: "2026-11-24T00:00:00.000Z" };
     const readings = {
@@ -302,7 +332,16 @@ describe("the list step, mounted", () => {
       try {
         const text = view.container.textContent;
         assert.equal(text.includes("Trade fair leads"), true, `${label}: the picked name`);
-        assert.equal(text.includes("view-a"), true, `${label}: the id for a blank name`);
+        assert.deepEqual(
+          [...view.container.querySelectorAll('[data-testid="list-picker-row-title"]')].map((title) => title.textContent),
+          ["Trade fair leads", "view-a"],
+          `${label}: the titles, the id for a blank name`,
+        );
+        assert.deepEqual(
+          [...view.container.querySelectorAll('[data-testid="list-picker-row-detail"]')].map((detail) => detail.textContent),
+          ["view-b", "view-a"],
+          `${label}: each row's id as its detail line`,
+        );
         assert.equal(view.container.querySelector('[role="alert"]'), null, `${label}: an alert`);
         assert.equal(view.container.querySelector('[data-testid="list-picker-try-again"]'), null, `${label}: Try again`);
         assert.equal(text.includes("could not be read"), false, `${label}: the failed-read words`);
