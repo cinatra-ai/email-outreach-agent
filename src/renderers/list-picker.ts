@@ -46,8 +46,8 @@ import { createElement, useEffect, useRef, useState, type ReactNode } from "reac
 // read in place of `value`. The press answers nothing: it writes nothing, the
 // run does not resume, and Continue stays as the picks leave it. A rejected or
 // malformed result draws the failed reading. A second press while one read is
-// pending does nothing, and a read that ends after the step is gone sets
-// nothing. A ticked list that the new read no longer offers is dropped, and the
+// pending does nothing, and a read that ends after the step is gone, or after
+// it was locked (disabled or drawn read-only), sets nothing and writes nothing. A ticked list that the new read no longer offers is dropped, and the
 // pick without it is written as an ordinary pick change. The binding's
 // `params.refreshValue` is not read here; it stays declared because the
 // recipient selection package declares the same binding with it, and the
@@ -71,13 +71,15 @@ import { createElement, useEffect, useRef, useState, type ReactNode } from "reac
 //
 // A COMPLETED STEP, REOPENED. On `mode="view"` the value may be the step's
 // recorded answer rather than its input: the write `{ listIds, listNames }`,
-// the host's lifted note `{ type: "list", listIds, listNames, snapshotAt }`, or
+// the host's lifted note `{ type: "list", listIds, listNames, snapshotAt }`, a
+// legacy scope with one `listId` and its `listName` (one pick), or
 // the recorded Continue values that carry that note as JSON text under
 // `approvalNote` (cinatra-ai/cinatra packages/agents/src/orchestrator-stepper-panel.tsx
 // ReadOnlyHitlReplay hands the recorded values as they are). Any of them may
 // arrive as JSON text. The step then draws the recorded picks as read-only
 // rows, ticked, each titled by its name, or by its id when the name is blank,
-// over its id as the detail line; it
+// over its id as the detail line; a recorded answer with no readable pick
+// draws "No list was picked on this step."; it
 // never draws the failed-read alert or Try again for a recorded answer. The
 // design (specs/app-artifact-review.html I.1) draws no separate completed
 // state, so the rows keep the pick's own markup with the inputs disabled.
@@ -147,22 +149,43 @@ function objectOf(value: unknown): Record<string, unknown> | null {
   return content as Record<string, unknown>;
 }
 
+/** Whether an object is a recorded list answer: plural `listIds`, legacy singular `listId`, or a `type: "list"` scope. */
+function isRecordedScope(answer: Record<string, unknown> | null): answer is Record<string, unknown> {
+  return (
+    answer !== null &&
+    (Array.isArray(answer.listIds) || typeof answer.listId === "string" || answer.type === "list")
+  );
+}
+
 /**
  * The picks a recorded answer holds, in their order, else null when the value
- * is no recorded answer. A recorded answer is an object with a `listIds` array
- * (the write, or the host's lifted note), or one whose `approvalNote` is such
- * an object or its JSON text. Each usable id counts once; its name is the
+ * is no recorded answer. A recorded answer is a scope (plural `listIds` with
+ * `listNames`, the write or the host's lifted note; or the legacy singular
+ * `listId` with `listName`, one pick; or any `type: "list"` scope), directly
+ * or under `approvalNote`, each as an object or its JSON text. A value that
+ * carries `approvalNote` is a recorded answer even when the note cannot be
+ * read; it then holds no pick. Each usable id counts once; its name is the
  * recorded name at the same place, or the id when that name is blank.
  */
 export function recordedPicks(value: unknown): OfferedList[] | null {
   const outer = objectOf(value);
   if (outer === null) return null;
-  const answer = Array.isArray(outer.listIds) ? outer : objectOf(outer.approvalNote);
-  if (answer === null || !Array.isArray(answer.listIds)) return null;
-  const names = Array.isArray(answer.listNames) ? answer.listNames : [];
+  let answer: Record<string, unknown> | null = null;
+  if (isRecordedScope(outer)) answer = outer;
+  else if (Object.prototype.hasOwnProperty.call(outer, "approvalNote")) {
+    const note = objectOf(outer.approvalNote);
+    if (!isRecordedScope(note)) return [];
+    answer = note;
+  } else return null;
+  const ids: unknown[] = Array.isArray(answer.listIds) ? answer.listIds : [answer.listId];
+  const names: unknown[] = Array.isArray(answer.listIds)
+    ? Array.isArray(answer.listNames)
+      ? answer.listNames
+      : []
+    : [answer.listName];
   const seen = new Set<string>();
   const picks: OfferedList[] = [];
-  (answer.listIds as unknown[]).forEach((id, index) => {
+  ids.forEach((id, index) => {
     if (typeof id !== "string" || id.trim().length === 0 || seen.has(id)) return;
     seen.add(id);
     const name = names[index];
@@ -265,6 +288,11 @@ function loadingRows() {
   );
 }
 
+/** Whether the step writes and reports: `mode` absent or "edit", and `disabled` absent or false. */
+function isWritable(props: Pick<ListPickerProps, "mode" | "disabled">): boolean {
+  return (props.mode === undefined || props.mode === "edit") && (props.disabled === undefined || props.disabled === false);
+}
+
 /** The list step. */
 export default function ListPickerRenderer(props: ListPickerProps) {
   // A new read the host made on Try again replaces the step's value for this
@@ -281,10 +309,11 @@ export default function ListPickerRenderer(props: ListPickerProps) {
   }, []);
   const content = reread !== null ? reread.content : props.value;
   const lists = offeredLists(content);
-  const writes =
-    (props.mode === undefined || props.mode === "edit") &&
-    (props.disabled === undefined || props.disabled === false);
+  const writes = isWritable(props);
   const [ticked, setTicked] = useState<string[]>([]);
+  // The current props and picks, for code that runs after an await.
+  const latest = useRef({ props, ticked });
+  latest.current = { props, ticked };
   const offeredIds = new Set(lists.map((list) => list.id));
   const tickedOffered = ticked.filter((id) => offeredIds.has(id));
   const valid = lists.length > 0 && tickedOffered.length >= declaredFloor(props.bindingParams);
@@ -322,16 +351,25 @@ export default function ListPickerRenderer(props: ListPickerProps) {
     }
     inFlight.current = false;
     if (!mounted.current) return;
+    // The props as they are now, not as they were at the press: a step that was
+    // locked (disabled, or drawn read-only) while the read was pending takes
+    // nothing from it. It leaves the loading reading and draws as before.
+    const now = latest.current;
+    if (!isWritable(now.props)) {
+      setReading(false);
+      return;
+    }
     setReread({ content: next });
     setReading(false);
     // A ticked list the new read no longer offers is dropped, and the pick
-    // without it is written as an ordinary pick change.
+    // without it is written as an ordinary pick change, through the current
+    // `onChange`.
     const nowOffered = offeredLists(next);
-    const kept = ticked.filter((id) => nowOffered.some((list) => list.id === id));
-    if (kept.length !== ticked.length) {
+    const kept = now.ticked.filter((id) => nowOffered.some((list) => list.id === id));
+    if (kept.length !== now.ticked.length) {
       setTicked(kept);
       const nameOf = new Map(nowOffered.map((list) => [list.id, list.name]));
-      void props.onChange({ listIds: kept, listNames: kept.map((id) => nameOf.get(id) ?? "") });
+      void now.props.onChange({ listIds: kept, listNames: kept.map((id) => nameOf.get(id) ?? "") });
     }
   };
 

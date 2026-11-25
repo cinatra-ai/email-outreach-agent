@@ -480,6 +480,109 @@ describe("the list step, mounted", () => {
     }
   });
 
+  it("reopened on a completed step, draws a legacy single-list scope as one row in every placement", async () => {
+    const legacy = { type: "list", listId: "L", listName: "Prospects" };
+    const readings = {
+      "the scope": legacy,
+      "the scope as JSON text": JSON.stringify(legacy),
+      "the scope under approvalNote": { approved: true, approvalNote: legacy },
+      "the scope as JSON text under approvalNote": { approved: true, approvalNote: JSON.stringify(legacy) },
+    };
+    for (const [label, value] of Object.entries(readings)) {
+      const view = await mount({ value, mode: "view", disabled: true });
+      try {
+        assert.equal(view.container.querySelector('[role="alert"]'), null, `${label}: the failed-read alert`);
+        const titles = [...view.container.querySelectorAll('[data-testid="list-picker-row-title"]')].map((t) => t.textContent);
+        const details = [...view.container.querySelectorAll('[data-testid="list-picker-row-detail"]')].map((d) => d.textContent);
+        assert.deepEqual(titles, ["Prospects"], `${label}: the title`);
+        assert.deepEqual(details, ["L"], `${label}: the detail line`);
+        const ticks = boxes(view.container);
+        assert.equal(ticks.length, 1, label);
+        assert.equal(ticks[0].checked && ticks[0].disabled, true, `${label}: ticked and disabled`);
+      } finally {
+        await view.unmount();
+      }
+    }
+  });
+
+  it("reopened on a completed step, a legacy scope with a blank name is titled by its id", async () => {
+    const view = await mount({ value: { type: "list", listId: "L", listName: " " }, mode: "view" });
+    try {
+      assert.deepEqual(
+        [...view.container.querySelectorAll('[data-testid="list-picker-row-title"]')].map((t) => t.textContent),
+        ["L"],
+      );
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("reopened on a completed step, a recorded answer with no readable pick is never the failed-read alert", async () => {
+    for (const value of [
+      { type: "list" },
+      { type: "list", listId: "" },
+      { approved: true, approvalNote: "not json" },
+      { approved: true, approvalNote: { type: "list", listIds: [] } },
+    ]) {
+      const view = await mount({ value, mode: "view" });
+      try {
+        assert.equal(view.container.querySelector('[role="alert"]'), null, JSON.stringify(value));
+        assert.equal(view.container.textContent.includes("No list was picked on this step."), true, JSON.stringify(value));
+        assert.equal(boxes(view.container).length, 0);
+      } finally {
+        await view.unmount();
+      }
+    }
+  });
+
+  it("a lock that arrives while a read is pending takes nothing from it: no write and no redraw", async () => {
+    for (const lock of [{ disabled: true }, { mode: "view" }]) {
+      const pending = deferred();
+      const onRequestRefresh = () => pending.promise;
+      const view = await mount({ value: { lists: LISTS, listsRead: "ok" }, onRequestRefresh });
+      try {
+        await click(boxes(view.container)[1]);
+        await view.rerender({ value: { lists: [], listsRead: "failed" }, onRequestRefresh });
+        await click(view.container.querySelector('[data-testid="list-picker-try-again"]'));
+        const writesBefore = view.writes.length;
+        await view.rerender({ value: { lists: [], listsRead: "failed" }, onRequestRefresh, ...lock });
+        // The read no longer offers the ticked list: unlocked, it would drop it and write.
+        await act(async () => {
+          pending.resolve({ lists: [LISTS[0], { id: "view-d", name: "Partners" }], listsRead: "ok" });
+        });
+        assert.equal(view.writes.length, writesBefore, `${JSON.stringify(lock)}: a write after the lock`);
+        assert.equal(view.container.querySelector('[data-testid="list-picker-loading"]'), null, `${JSON.stringify(lock)}: still loading`);
+        assert.equal(view.container.textContent.includes("Partners"), false, `${JSON.stringify(lock)}: the read is drawn`);
+        assert.equal(view.container.querySelector('[role="alert"]') !== null, true, `${JSON.stringify(lock)}: the step does not draw as before`);
+      } finally {
+        await view.unmount();
+      }
+    }
+  });
+
+  it("after a re-render, the write that drops a vanished list goes to the current onChange", async () => {
+    const pending = deferred();
+    const onRequestRefresh = () => pending.promise;
+    const first = [];
+    const current = [];
+    const view = await mount({ value: { lists: LISTS, listsRead: "ok" }, onRequestRefresh, onChange: (v) => void first.push(v) });
+    try {
+      await click(boxes(view.container)[0]);
+      await click(boxes(view.container)[1]);
+      await view.rerender({ value: { lists: [], listsRead: "failed" }, onRequestRefresh, onChange: (v) => void first.push(v) });
+      await click(view.container.querySelector('[data-testid="list-picker-try-again"]'));
+      await view.rerender({ value: { lists: [], listsRead: "failed" }, onRequestRefresh, onChange: (v) => void current.push(v) });
+      const firstBefore = first.length;
+      await act(async () => {
+        pending.resolve({ lists: [LISTS[0]], listsRead: "ok" });
+      });
+      assert.equal(first.length, firstBefore, "the onChange of the press was called");
+      assert.deepEqual(current, [{ listIds: ["view-a"], listNames: ["Customers in Berlin"] }]);
+    } finally {
+      await view.unmount();
+    }
+  });
+
   it("reopened on a completed step, draws the recorded picks by name and no failed-read alert", async () => {
     const note = { type: "list", listIds: ["view-b", "view-a"], listNames: ["Trade fair leads", ""], snapshotAt: "2026-11-24T00:00:00.000Z" };
     const readings = {
