@@ -75,12 +75,6 @@
     "riskLevel": "low",
     "hasApprovalGates": true,
     "toolAccess": [],
-    "tools": [
-      {
-        "name": "saved_drafts",
-        "module": "./cinatra/tools/saved-drafts.mjs"
-      }
-    ],
     "ownerOrgId": null,
     "fieldRenderers": [
       {

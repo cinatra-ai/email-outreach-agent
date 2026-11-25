@@ -459,6 +459,31 @@ test("(3562) --check fails when the embedded drafting copy drifts from its pinne
   assert.doesNotMatch(checkFlowText(serialize(editedCopy), list, children).join("\n"), /recipient-selection-subflow|delivery-subflow/);
 });
 
+// A tool step of an embedded copy runs the CHILD's own module (the platform proves the step is, apart from its id, the
+// verbatim copy of exactly one ApiNode of the child's installed flow, and that the child declares the tool embeddable).
+// So the tool calls of every copy must be nodes of the pinned snapshot, byte for byte but for the prefixed id and the
+// declared differences: a copy's tool step that drifts from its child would be refused by the platform at run time.
+test("(3562) every tool step of a copy is the pinned child's own tool step, apart from its id", () => {
+  const toolSteps = (steps) => Object.values(steps).filter((s) => s?.component_type === "ApiNode" && s.data?.tool === "extension_tool");
+  const seen = [];
+  for (const [index, group] of list.entries()) {
+    const copy = flow.$referenced_components[group.copyId].$referenced_components;
+    const child = children[index].$referenced_components;
+    for (const step of toolSteps(copy)) {
+      const own = Object.entries(child).filter(([id, node]) => group.prefix + id === step.id && node.component_type === "ApiNode");
+      assert.equal(own.length, 1, `${step.id} is no step of ${group.repository} at ${group.commit}`);
+      const strip = (node) => {
+        const { id: _id, name: _name, ...rest } = node;
+        return rest;
+      };
+      assert.deepEqual(strip(step), strip(own[0][1]), `${step.id} differs from ${group.repository}'s step ${own[0][0]}`);
+      assert.equal(typeof own[0][1].data.input.name, "string");
+      seen.push(`${group.prefix}${own[0][0]}:${own[0][1].data.input.name}`);
+    }
+  }
+  assert.deepEqual(seen.sort(), ["drafts-read_drafts:saved_drafts", "sender-file_recipients:recipient_records", "sender-resolve_send:send_contents"]);
+});
+
 const DRAFTS = flow.$referenced_components["email-drafting-subflow"].$referenced_components;
 const campaignPattern = DRAFTS["drafts-campaign_match"].regex_pattern;
 

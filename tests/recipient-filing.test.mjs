@@ -12,7 +12,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -74,12 +74,14 @@ test("(8) the filing step is handed the run, the confirmed recipient list and th
   assert.equal(step.data.input.input.recipientsRef, "{{ confirmedRecipientsRef }}");
 });
 
-test("(8) the delivery copy's tools are the delivery agent's own, not shipped or declared by this package", () => {
+test("(8) the copies' tools are their agents' own, not shipped or declared by this package", () => {
   const declared = Array.isArray(pkg.cinatra.tools) ? pkg.cinatra.tools : [];
   const calls = toolCalls(oas);
   // The platform resolves a step of an embedded child flow against that child's
   // own installed package, so no copy of the delivery agent's tools is here.
-  for (const tool of [TOOL, "send_contents"]) {
+  // The drafting copy's read step calls saved_drafts, which the drafting agent declares embeddable: a copy of its
+  // module here would be a second, unpinned behaviour that the platform never runs for the embedded step.
+  for (const tool of [TOOL, "send_contents", "saved_drafts"]) {
     assert.ok(calls.some((c) => c.name === tool), `the flow calls no ${tool} tool`);
     assert.ok(!declared.some((t) => t.name === tool), `${tool} is declared by this package`);
   }
@@ -91,6 +93,11 @@ test("(8) the delivery copy's tools are the delivery agent's own, not shipped or
     !existsSync(path.join(root, "cinatra/tools/send-contents.mjs")),
     "a copy of the delivery agent's module is in the package",
   );
+  assert.ok(
+    !existsSync(path.join(root, "cinatra/tools/saved-drafts.mjs")),
+    "a copy of the drafting agent's module is in the package",
+  );
+  assert.ok(!existsSync(path.join(root, "cinatra/tools")) || readdirSync(path.join(root, "cinatra/tools")).length === 0, "a tool module is shipped");
   // Every tool call of the flow is a step of an embedded child copy: no step of
   // the outreach's own flow calls a tool by name.
   const own = Object.keys(oas.$referenced_components).filter((id) => oas.$referenced_components[id]?.data?.tool === "extension_tool");
