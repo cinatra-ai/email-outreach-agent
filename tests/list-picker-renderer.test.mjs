@@ -364,6 +364,54 @@ describe("the list step, mounted", () => {
     }
   });
 
+  /** Ticks two lists, draws the step again with a failed read, then presses Try again for `next`. */
+  async function rereadAfterTicks(next) {
+    const onRequestRefresh = async () => next;
+    const view = await mount({ value: { lists: LISTS, listsRead: "ok" }, onRequestRefresh });
+    await click(boxes(view.container)[1]);
+    await click(boxes(view.container)[0]);
+    await view.rerender({ value: { lists: [], listsRead: "failed" }, onRequestRefresh });
+    const before = view.writes.length;
+    await click(view.container.querySelector('[data-testid="list-picker-try-again"]'));
+    return { view, after: view.writes.slice(before) };
+  }
+
+  it("a new read that renames a ticked list writes the pick with the new name once", async () => {
+    const renamed = { id: "view-a", name: "Customers in Berlin and Potsdam" };
+    const { view, after } = await rereadAfterTicks({ lists: [renamed, LISTS[1], LISTS[2]], listsRead: "ok" });
+    try {
+      assert.deepEqual(after, [
+        { listIds: ["view-b", "view-a"], listNames: ["Trade fair leads", "Customers in Berlin and Potsdam"] },
+      ]);
+      assert.deepEqual(boxes(view.container).map((box) => box.checked), [true, true, false]);
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("a new read that changes nothing about the pick writes nothing", async () => {
+    const { view, after } = await rereadAfterTicks({
+      lists: [LISTS[2], LISTS[0], { id: "view-d", name: "Partners" }, LISTS[1]],
+      listsRead: "ok",
+    });
+    try {
+      assert.deepEqual(after, []);
+      assert.equal(boxes(view.container).length, 4);
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("a new read that renames one ticked list and drops the other writes once", async () => {
+    const { view, after } = await rereadAfterTicks({ lists: [{ id: "view-a", name: "Berlin customers" }], listsRead: "ok" });
+    try {
+      assert.deepEqual(after, [{ listIds: ["view-a"], listNames: ["Berlin customers"] }]);
+      assert.equal(view.reports.at(-1), true);
+    } finally {
+      await view.unmount();
+    }
+  });
+
   it("a read that ends after the step is gone sets nothing", async () => {
     const pending = deferred();
     const errors = [];

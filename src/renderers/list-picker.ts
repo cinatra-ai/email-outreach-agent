@@ -47,8 +47,11 @@ import { createElement, useEffect, useRef, useState, type ReactNode } from "reac
 // run does not resume, and Continue stays as the picks leave it. A rejected or
 // malformed result draws the failed reading. A second press while one read is
 // pending does nothing, and a read that ends after the step is gone, or after
-// it was locked (disabled or drawn read-only), sets nothing and writes nothing. A ticked list that the new read no longer offers is dropped, and the
-// pick without it is written as an ordinary pick change. The binding's
+// it was locked (disabled or drawn read-only), sets nothing and writes nothing.
+// After a new read the step accepts, the pick is the ticked lists it still
+// offers, in their order, with the names it gives them; when that pick differs
+// from the pick last written (a list dropped or renamed), it is written once as
+// an ordinary pick change, else nothing is written. The binding's
 // `params.refreshValue` is not read here; it stays declared because the
 // recipient selection package declares the same binding with it, and the
 // application refuses two declarations of one binding that differ.
@@ -314,6 +317,12 @@ export default function ListPickerRenderer(props: ListPickerProps) {
   // The current props and picks, for code that runs after an await.
   const latest = useRef({ props, ticked });
   latest.current = { props, ticked };
+  // The pick last written, so a new read writes only a pick that changed.
+  const lastWritten = useRef<{ listIds: string[]; listNames: string[] } | null>(null);
+  const write = (onChange: ListPickerProps["onChange"], pick: { listIds: string[]; listNames: string[] }) => {
+    lastWritten.current = pick;
+    void onChange(pick);
+  };
   const offeredIds = new Set(lists.map((list) => list.id));
   const tickedOffered = ticked.filter((id) => offeredIds.has(id));
   const valid = lists.length > 0 && tickedOffered.length >= declaredFloor(props.bindingParams);
@@ -333,7 +342,7 @@ export default function ListPickerRenderer(props: ListPickerProps) {
       : [...tickedOffered, id];
     setTicked(next);
     const nameOf = new Map(lists.map((list) => [list.id, list.name]));
-    void props.onChange({ listIds: next, listNames: next.map((tickedId) => nameOf.get(tickedId) ?? "") });
+    write(props.onChange, { listIds: next, listNames: next.map((tickedId) => nameOf.get(tickedId) ?? "") });
   };
 
   // Try again: the host reads the lists again for the step the run waits at.
@@ -361,16 +370,19 @@ export default function ListPickerRenderer(props: ListPickerProps) {
     }
     setReread({ content: next });
     setReading(false);
-    // A ticked list the new read no longer offers is dropped, and the pick
-    // without it is written as an ordinary pick change, through the current
-    // `onChange`.
+    // The pick as the new read names it: the ticked lists it still offers, in
+    // their order, with the names it gives them. A ticked list it no longer
+    // offers is dropped. When that pick differs in any way from the pick last
+    // written (a dropped list, a renamed one), it is written once, as an
+    // ordinary pick change, through the current `onChange`; otherwise nothing
+    // is written.
     const nowOffered = offeredLists(next);
-    const kept = now.ticked.filter((id) => nowOffered.some((list) => list.id === id));
-    if (kept.length !== now.ticked.length) {
-      setTicked(kept);
-      const nameOf = new Map(nowOffered.map((list) => [list.id, list.name]));
-      void now.props.onChange({ listIds: kept, listNames: kept.map((id) => nameOf.get(id) ?? "") });
-    }
+    const nameOf = new Map(nowOffered.map((list) => [list.id, list.name]));
+    const kept = now.ticked.filter((id) => nameOf.has(id));
+    if (kept.length !== now.ticked.length) setTicked(kept);
+    const pick = { listIds: kept, listNames: kept.map((id) => nameOf.get(id) ?? "") };
+    const last = lastWritten.current ?? { listIds: [], listNames: [] };
+    if (JSON.stringify(pick) !== JSON.stringify(last)) write(now.props.onChange, pick);
   };
 
   const question = declaredWords(props.bindingParams, "question");
