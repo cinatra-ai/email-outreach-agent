@@ -162,12 +162,14 @@ function objectOf(value: unknown): Record<string, unknown> | null {
   return content as Record<string, unknown>;
 }
 
-/** Whether an object is a recorded list answer: plural `listIds`, legacy singular `listId`, or a `type: "list"` scope. */
-function isRecordedScope(answer: Record<string, unknown> | null): answer is Record<string, unknown> {
-  return (
-    answer !== null &&
-    (Array.isArray(answer.listIds) || typeof answer.listId === "string" || answer.type === "list")
-  );
+/**
+ * Whether an object is a recorded list answer: plural `listIds`, legacy
+ * singular `listId`, or a `type: "list"` scope. A plain boolean, not a type
+ * guard: an object that is no scope is still an object (it may carry
+ * `approvalNote`), so a false answer must not narrow it away.
+ */
+function isRecordedScope(answer: Record<string, unknown>): boolean {
+  return Array.isArray(answer.listIds) || typeof answer.listId === "string" || answer.type === "list";
 }
 
 /**
@@ -187,7 +189,7 @@ export function recordedPicks(value: unknown): OfferedList[] | null {
   if (isRecordedScope(outer)) answer = outer;
   else if (Object.prototype.hasOwnProperty.call(outer, "approvalNote")) {
     const note = objectOf(outer.approvalNote);
-    if (!isRecordedScope(note)) return [];
+    if (note === null || !isRecordedScope(note)) return [];
     answer = note;
   } else return null;
   const ids: unknown[] = Array.isArray(answer.listIds) ? answer.listIds : [answer.listId];
