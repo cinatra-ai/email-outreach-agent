@@ -25,7 +25,11 @@
 // take `as` (nothing else changes when `as` is the child's own id), and the
 // differences its own `declared` list names (empty: none). The parent owns
 // the node's place in its nodes list and its edges; the generator adds none. A
-// hoisted step must be left out of the copy by an omit-step entry.
+// hoisted step must be left out of the copy by an omit-step entry. A parent
+// component under that id is replaced only when it is provably the hoist's own
+// output: the step it generates now, or the step whose git blob the hoist
+// records as last written (its `blob`, which --write keeps in the list and
+// --check verifies); any other component under that id is refused.
 //
 // A generated copy, and a hoisted step, whose steps name an input or an output
 // they do not have (a dangling reference) THROWS as well; see danglingNames.
@@ -66,6 +70,16 @@ export function serialize(value) {
       (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"),
     ) + "\n"
   );
+}
+
+/** A member key as the flow file's serialization writes it (the same escapes as serialize). */
+export function keyToken(key) {
+  return serialize(key).trimEnd();
+}
+
+/** The git blob sha of a value's serialization: the identity a hoist records for the step it wrote. */
+function blobOf(value) {
+  return gitBlobSha(serialize(value));
 }
 
 /** The git blob sha of a buffer: sha1 over `blob <length>\0` and the bytes. */
@@ -131,12 +145,13 @@ function membersOf(text, at) {
   let i = skipSpace(text, at + 1);
   if (text[i] === "}") return members;
   for (;;) {
+    const keyStart = i;
     const keyEnd = skipString(text, i);
     const key = JSON.parse(text.slice(i, keyEnd));
     i = skipSpace(text, keyEnd);
     const start = skipSpace(text, i + 1);
     const end = skipValue(text, start);
-    members.push({ key, start, end });
+    members.push({ key, keyStart, start, end });
     i = skipSpace(text, end);
     if (text[i] !== ",") return members;
     i = skipSpace(text, i + 1);
@@ -662,9 +677,18 @@ export function generateFlow(parent, list, children) {
       if (copyIds.has(as)) fail(`the id '${as}' collides with an embedded copy of the parent`);
       if (hoisted.has(as)) fail(`the id '${as}' collides with another group's hoist`);
       hoisted.add(as);
-      const existing = ownValue(rc, as);
-      if (Object.hasOwn(rc, as) && !(isObject(existing) && existing.id === as && existing.component_type === node.component_type)) {
-        fail(`the id '${as}' collides with a component of the parent that is not this hoist's step`);
+      // The parent's component under this id is replaced only when it is provably this hoist's own
+      // output: the step it generates now, or the one its recorded blob names (the step --write last
+      // wrote). Anything else is the parent's own component and is refused.
+      if (Object.hasOwn(rc, as)) {
+        const existing = blobOf(ownValue(rc, as));
+        const recorded = typeof group.hoist[at].blob === "string" ? group.hoist[at].blob : null;
+        if (existing !== blobOf(node) && existing !== recorded) {
+          fail(
+            `the id '${as}' collides with the parent's component '${as}' (blob ${existing}), which is neither ` +
+              `the step this hoist generates (blob ${blobOf(node)}) nor the one it recorded as written (${recorded ? `blob ${recorded}` : "no record"})`,
+          );
+        }
       }
       setOwn(rc, as, node);
     });
@@ -764,12 +788,43 @@ function appendComponent(text, id, value) {
   const members = membersOf(text, start);
   if (members.length === 0) throw new Error(`${FLOW_PATH}: the flow carries no components to add '${id}' after`);
   const last = members[members.length - 1];
-  const keyStart = text.lastIndexOf(JSON.stringify(last.key), last.start);
-  const lineStart = text.lastIndexOf("\n", keyStart) + 1;
-  const indent = /^[ \t]*/.exec(text.slice(lineStart, keyStart))[0];
+  // The last key's offset as the text writes it (escaped or not), read by position, never searched for.
+  const lineStart = text.lastIndexOf("\n", last.keyStart) + 1;
+  const indent = /^[ \t]*/.exec(text.slice(lineStart, last.keyStart))[0];
   const valueText = serialize(value).trimEnd().split("\n").join(`\n${indent}`);
-  const member = `,\n${indent}${serialize(id).trimEnd()}: ${valueText}`;
+  const member = `,\n${indent}${keyToken(id)}: ${valueText}`;
   return text.slice(0, last.end) + member + text.slice(last.end);
+}
+
+/**
+ * The list with each hoist's `blob` set to the git blob sha of the step it
+ * generates (its serialization): the record --write keeps in the list, by
+ * which a later run knows the parent's component under that id as this hoist's
+ * own earlier output. The list passed in is not changed.
+ */
+export function recordHoists(list, children) {
+  const recorded = clone(list);
+  recorded.forEach((group, index) => {
+    generateHoists(children[index], group).forEach(({ node }, at) => {
+      group.hoist[at].blob = blobOf(node);
+    });
+  });
+  return recorded;
+}
+
+/** Each hoist whose recorded blob is not the blob of the component the flow carries under its id. */
+export function hoistRecordProblems(flow, list) {
+  const problems = [];
+  for (const group of list) {
+    for (const item of Array.isArray(group.hoist) ? group.hoist : []) {
+      const carried = Object.hasOwn(flow.$referenced_components ?? {}, item.as)
+        ? blobOf(ownValue(flow.$referenced_components, item.as))
+        : "none";
+      if (typeof item.blob !== "string") problems.push(`hoist '${item.as}' records no blob; the flow carries ${carried}`);
+      else if (item.blob !== carried) problems.push(`hoist '${item.as}' records blob ${item.blob}; the flow carries ${carried}`);
+    }
+  }
+  return problems;
 }
 
 function main(argv) {
@@ -789,12 +844,23 @@ function main(argv) {
     const written = writeCopies(committedText, generated, list);
     if (written !== committedText) writeFileSync(flowFile, written);
     process.stdout.write(`embedded-copies: wrote ${generatedIds(list).join(", ")} into ${FLOW_PATH}\n`);
+    // Each hoist records the blob of the step it wrote, so the next run knows that step as its own.
+    const listFile = path.join(ROOT, LIST_PATH);
+    const listText = readFileSync(listFile, "utf8");
+    const recordedText = serialize(recordHoists(list, children));
+    if (list.some((group) => Array.isArray(group.hoist)) && recordedText !== listText) {
+      writeFileSync(listFile, recordedText);
+      process.stdout.write(`embedded-copies: recorded the hoisted steps' blobs in ${LIST_PATH}\n`);
+    }
     return 0;
   }
-  if (text === committedText) {
+  const records = hoistRecordProblems(committed, list);
+  for (const problem of records) process.stderr.write(`embedded-copies: ${problem} (run --write)\n`);
+  if (text === committedText && records.length === 0) {
     process.stdout.write(`embedded-copies: ${FLOW_PATH} carries exactly the generated copies\n`);
     return 0;
   }
+  if (text === committedText) return 1;
   const differing = generatedIds(list)
     .filter(
       (id) =>

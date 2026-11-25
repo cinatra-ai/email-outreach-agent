@@ -38,6 +38,8 @@ import {
   generateCopy,
   generateFlow,
   generateHoists,
+  hoistRecordProblems,
+  recordHoists,
   gitBlobSha,
   loadChild,
   loadList,
@@ -319,13 +321,14 @@ test("(3089) a hoist writes the child step into the parent under its new id, ver
   assert.equal(first, serialize(flow), "--write does not write what --check compares against");
   const second = writeCopies(first, generateFlow(JSON.parse(first), [g], [source]), [g]);
   assert.equal(second, first, "a second run changed the text");
-  // A stale hoisted component is replaced in its place, and bytes outside it are kept.
+  // A stale hoisted component (one this hoist recorded as written) is replaced in its place, and bytes outside it are kept.
   const stale = JSON.parse(first);
   stale.$referenced_components.publish.name = "stale";
   stale.$referenced_components.after = { id: "after" };
+  const staleGroup = { ...g, hoist: [{ ...g.hoist[0], blob: gitBlobSha(Buffer.from(serialize(stale.$referenced_components.publish))) }] };
   const staleText = serialize(stale).replace('"component_type": "Flow"', '"component_type":  "Flow"');
   assert.notEqual(staleText, serialize(stale), "the probe changed nothing");
-  const rewritten = writeCopies(staleText, generateFlow(stale, [g], [source]), [g]);
+  const rewritten = writeCopies(staleText, generateFlow(stale, [staleGroup], [source]), [staleGroup]);
   assert.ok(rewritten.startsWith('{\n  "component_type":  "Flow"'), "--write rewrote bytes outside the hoisted component");
   assert.equal(JSON.parse(rewritten).$referenced_components.publish.name, "Publish");
   assert.deepEqual(Object.keys(JSON.parse(rewritten).$referenced_components), ["start", "run_copy", "copy", "publish", "after"]);
@@ -367,6 +370,10 @@ test("(3089) a hoist refuses an absent step, a step kept in the copy, and an id 
   refused(() => generateHoists(child(), hoistGroup(undefined, [])), "org/child", "hoist 1", "kept in the copy");
   // The parent's own start, another kind of step, under the hoist's id.
   refused(() => generateFlow(parent(), [hoistGroup([{ step: "pub", as: "start", declared: [] }])], [child()]), "org/child", "hoist 1", "collides");
+  // A hand-authored step of the same kind under the hoist's id, with other content.
+  const handAuthored = parent();
+  handAuthored.$referenced_components.publish = { component_type: "ApiNode", id: "publish", name: "Hand-authored", url: "x", http_method: "POST" };
+  refused(() => generateFlow(handAuthored, [hoistGroup()], [child()]), "org/child", "hoist 1", "collides", "'publish'");
   // The copy itself.
   refused(() => generateFlow(parent(), [hoistGroup([{ step: "pub", as: "copy", declared: [] }])], [child()]), "hoist 1", "collides");
   // Two hoists under one id.
@@ -424,13 +431,61 @@ test("(3089) the delivery flow at its merged commit gives exactly the delivery p
   assert.deepEqual(hoists.map((h) => h.as), ["send"]);
   assert.equal(serialize(hoists[0].node), sendText);
 
-  // Through the parent: the outreach flow as it is today takes the copy in place and the send at its top level.
+  // Through the parent: the outreach flow as it is today takes the copy in place and the send as a new
+  // component of its own; the parent's node list is the parent's and stays as it is.
   const outreach = JSON.parse(readFileSync(path.join(ROOT, "cinatra", "oas.json"), "utf8"));
   assert.equal(Object.hasOwn(outreach.$referenced_components, "send"), false);
   const flow = generateFlow(outreach, [deliveryGroup], [deliveryChild]);
   assert.equal(serialize(flow.$referenced_components["email-delivery-subflow"]), subflowText);
   assert.equal(serialize(flow.$referenced_components.send), sendText);
   assert.deepEqual(flow.nodes, outreach.nodes, "the generator changed the parent's nodes");
+  assert.ok(!flow.nodes.some((node) => refOf(node) === "send"), "the generator placed the send in the node list");
+});
+
+test("(3089) a hoist does not overwrite the outreach flow's own hand-authored step of the same kind", () => {
+  const deliveryChild = JSON.parse(fixture("email-delivery-agent-0505839-oas.json"));
+  const outreach = JSON.parse(readFileSync(path.join(ROOT, "cinatra", "oas.json"), "utf8"));
+  assert.equal(outreach.$referenced_components.context_setup.component_type, "ApiNode");
+  const onto = { ...deliveryGroup, hoist: [{ step: "send", as: "context_setup", declared: [] }] };
+  refused(() => generateFlow(outreach, [onto], [deliveryChild]), DELIVERY, "hoist 1", "collides", "'context_setup'");
+});
+
+test("(3089) a re-run after a child change replaces the hoist's own earlier output, which --write records", () => {
+  const g = hoistGroup();
+  const first = writeCopies(serialize(parent()), generateFlow(parent(), [g], [child()]), [g]);
+  const recorded = recordHoists([g], [child()]);
+  assert.equal(recorded[0].hoist[0].blob, gitBlobSha(Buffer.from(serialize(JSON.parse(first).$referenced_components.publish))));
+  assert.equal(Object.hasOwn(g.hoist[0], "blob"), false, "the list passed in is changed");
+  assert.deepEqual(hoistRecordProblems(JSON.parse(first), recorded), []);
+  assert.match(hoistRecordProblems(JSON.parse(first), [g]).join(), /hoist 'publish' records no blob/);
+
+  const changed = child();
+  changed.$referenced_components.pub.name = "Publish now";
+  // Without the record the earlier output cannot be told from a hand-authored step: refused.
+  refused(() => generateFlow(JSON.parse(first), [g], [changed]), "hoist 1", "collides");
+  // With it, the earlier output is replaced in its place.
+  const second = writeCopies(first, generateFlow(JSON.parse(first), recorded, [changed]), recorded);
+  assert.equal(JSON.parse(second).$referenced_components.publish.name, "Publish now");
+  const rerecorded = recordHoists(recorded, [changed]);
+  assert.notEqual(rerecorded[0].hoist[0].blob, recorded[0].hoist[0].blob);
+  assert.deepEqual(hoistRecordProblems(JSON.parse(second), rerecorded), []);
+  assert.match(hoistRecordProblems(JSON.parse(second), recorded).join(), /hoist 'publish' records blob/);
+});
+
+test("(3089) a hoist appended after a last component with a non-ASCII id is written as --check reads it", () => {
+  const before = parent();
+  before.$referenced_components["dé"] = { id: "dé" };
+  const g = hoistGroup();
+  const text = serialize(before);
+  assert.ok(text.includes('"d\\u00e9": {'));
+  const first = writeCopies(text, generateFlow(before, [g], [child()]), [g]);
+  assert.equal(first, serialize(generateFlow(JSON.parse(first), [g], [child()])), "--check does not accept what --write wrote");
+  assert.equal(writeCopies(first, generateFlow(JSON.parse(first), [g], [child()]), [g]), first, "a second run changed the text");
+  // A text that writes the id unescaped is found too, and keeps its own bytes.
+  const raw = text.replace('"d\\u00e9": {', '"dé": {');
+  const fromRaw = writeCopies(raw, generateFlow(before, [g], [child()]), [g]);
+  assert.equal(fromRaw, first.replace('"d\\u00e9": {', '"dé": {'), "the unescaped key or the new member's layout changed");
+  assert.match(fromRaw, /\n    "publish": \{\n      "component_type": "ApiNode"/);
 });
 
 test("(3089) each of the delivery group's entries is needed: leaving one out changes or refuses the copy", () => {
