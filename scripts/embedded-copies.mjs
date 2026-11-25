@@ -493,9 +493,40 @@ const TEMPLATED = Object.freeze(["ApiNode", "OutputMessageNode", "PluginTemplate
 // {# pyagentspec-input-hint: {{ name }} #} sentinel names an input.
 const PLACEHOLDER = /\{\{\s*(\w+)\s*\}\}/g;
 const ENV_VAR = /^[A-Z_][A-Z0-9_]*$/;
-// The template tokenizer of the delivery pack's renderTemplate (email-delivery-agent
-// tests/lifecycle-d-w8-flow.test.mjs): comments, tags and outputs.
-const TEMPLATE_TOKEN = /\{#[\s\S]*?#\}|\{%([\s\S]*?)%\}|\{\{([\s\S]*?)\}\}/g;
+const CLOSING = { "{{": "}}", "{%": "%}", "{#": "#}" };
+
+/**
+ * A template text read whole, left to right, into its comments, tags and outputs. Every {{, {% and {# must open a
+ * construct that closes: an output or tag ends at the first closing mark outside a quoted text (in which a
+ * backslash escapes the next character, as in Jinja), a comment at the first #}. Outside a construct a lone }} is
+ * plain text (JSON text holds it); a %} or #} is refused.
+ */
+function templateParts(text, found) {
+  const parts = [];
+  const opening = /\{[{%#]/g;
+  for (let i = 0; ; ) {
+    opening.lastIndex = i;
+    const m = opening.exec(text);
+    const plain = text.slice(i, m ? m.index : text.length);
+    for (const stray of ["%}", "#}"]) if (plain.includes(stray)) found.problems.push(`stray '${stray}'`);
+    if (!m) return parts;
+    const mark = m[0];
+    let j = m.index + 2;
+    for (let quote = null; j < text.length; j += 1) {
+      if (quote) {
+        if (text[j] === "\\") j += 1;
+        else if (text[j] === quote) quote = null;
+      } else if (mark !== "{#" && (text[j] === "'" || text[j] === '"')) quote = text[j];
+      else if (text.startsWith(CLOSING[mark], j)) break;
+    }
+    if (j >= text.length) {
+      found.problems.push(`unterminated '${mark}'`);
+      return parts;
+    }
+    parts.push({ mark, body: text.slice(m.index + 2, j), raw: text.slice(m.index, j + 2) });
+    i = j + 2;
+  }
+}
 
 // The template grammar the copy generator reads: exactly what the pinned children and the outreach flow use. An
 // expression is accepted only when these rules consume it whole; anything else is refused as unsupported, so a
@@ -591,17 +622,16 @@ function readExpression(expression, found) {
 /** The names one template text reads: comments' bare placeholders, outputs, and nested if, elif, else and endif tags. */
 function readTemplate(text, found) {
   const open = [];
-  for (const m of text.matchAll(TEMPLATE_TOKEN)) {
-    if (m[0].startsWith("{#")) {
-      for (const hint of m[0].matchAll(PLACEHOLDER)) if (!ENV_VAR.test(hint[1])) found.names.add(hint[1]);
+  for (const { mark, body, raw } of templateParts(text, found)) {
+    if (mark === "{#") {
+      for (const hint of raw.matchAll(PLACEHOLDER)) if (!ENV_VAR.test(hint[1])) found.names.add(hint[1]);
       continue;
     }
-    const body = m[1] ?? m[2];
     if (/^-|-$/.test(body)) {
       found.problems.push("whitespace control");
       continue;
     }
-    if (m[2] !== undefined) {
+    if (mark === "{{") {
       if (!ENV_VAR.test(body.trim())) readExpression(body, found);
       continue;
     }
@@ -632,7 +662,7 @@ export function templateReading(step) {
   const found = { names: new Set(), problems: [] };
   const walk = (value, top) => {
     if (typeof value === "string") {
-      if (/\{\{|\{%|\{#/.test(value)) readTemplate(value, found);
+      readTemplate(value, found);
       return;
     }
     if (value === null || typeof value !== "object") return;
@@ -709,6 +739,13 @@ export function danglingNames(flow) {
     if (own !== startOwn) found.push(`the flow's inputs (${own}) differ from the start's (${startOwn})`);
   }
   for (const step of Object.values(steps)) found.push(...stepDangling(step));
+  // Every reference the copy makes, inside its steps or in its nodes and start, names a component it carries.
+  for (const [where, value] of [...Object.entries(steps), ["the flow's nodes", flow.nodes], ["the flow's start", flow.start_node]]) {
+    walkRefs(value, (ref) => {
+      if (!Object.hasOwn(steps, ref)) found.push(`${isObject(value) && value.id ? value.id : where} refers to ${ref}, which is no component of the copy`);
+      return ref;
+    });
+  }
   for (const edge of flow.data_flow_connections ?? []) {
     const from = ownValue(steps, refOf(edge.source_node));
     const to = ownValue(steps, refOf(edge.destination_node));
@@ -780,6 +817,12 @@ export function generateHoists(child, group) {
     // as they follow a copy's prefix; under the child's own id nothing else changes.
     if (item.as === node.id) node.id = item.as;
     else moveStepId(node, item.as, fail);
+    // A hoisted step may refer only to itself (that reference follows its id): any other component it names
+    // is left out of the copy or means something else in the parent.
+    walkRefs(node, (ref) => {
+      if (ref !== item.step) fail(`the hoisted step refers to '${ref}'; a hoisted step may refer only to itself`);
+      return item.as;
+    });
     const found = stepDangling(node);
     if (found.length > 0) fail(`the hoisted step names what it does not have: ${found.join("; ")}`);
     return { as: item.as, node };

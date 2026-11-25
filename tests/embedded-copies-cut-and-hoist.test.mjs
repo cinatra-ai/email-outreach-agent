@@ -774,7 +774,6 @@ test("(3089) every template construct outside the grammar is refused, naming it"
     "a + 1",
     "{'k': a}",
     "[a]",
-    "'abc",
     "'a\\'b'",
     "\"t\"",
     "a is defined",
@@ -817,4 +816,38 @@ test("(3089) every step of every pinned child and of the parent uses only the al
   };
   for (const [where, flow] of flows) visit(where, flow);
   assert.ok(read > 50, `only ${read} steps were read`);
+});
+
+test("(3089) a template is read whole: an unterminated construct or a stray closing mark is refused, a lone }} is text", () => {
+  unsupported("{{ missing", "unterminated '{{'");
+  unsupported("{% if missing", "unterminated '{%'");
+  unsupported("{# open", "unterminated '{#'");
+  unsupported("{{ a }} {{ xs", "unterminated '{{'");
+  unsupported("{{ 'abc }}", "unterminated '{{'");
+  unsupported("text %} more", "stray '%}'");
+  unsupported("{{ a }} note #}", "stray '#}'");
+  // A quoted text inside an output may hold the closing mark; JSON text outside a construct may hold }}.
+  accepts("{{ '}}' }}{% if a == '%}' %}{% endif %}");
+  accepts('{"a": {"b": 1}} {{ a }}');
+  accepts('{"value": {{ a | tojson }}}}');
+  assert.deepEqual(rendersOf('{"answer": {"status": "x"}} {{ m }}'), ["m"]);
+});
+
+test("(3089) a hoisted step carries no reference but to itself, which follows its id", () => {
+  const withProbe = (ref) => {
+    const source = child();
+    source.$referenced_components.pub.probe = { nested: [{ $component_ref: ref }] };
+    return source;
+  };
+  const [hoisted] = generateHoists(withProbe("pub"), hoistGroup());
+  assert.deepEqual(hoisted.node.probe, { nested: [{ $component_ref: "publish" }] });
+  refused(() => generateHoists(withProbe("work"), hoistGroup()), "org/child", "hoist 1", "refers to 'work'");
+});
+
+test("(3089) a copy whose steps refer to a component it does not carry is refused", () => {
+  const source = child();
+  source.$referenced_components.work.probe = { $component_ref: "pub" };
+  refused(() => generateCopy(source, group([entry("omit-step", { step: "pub" })])), "org/child", "p-work refers to p-pub");
+  // A reference to a step the copy keeps is prefixed and resolves.
+  assert.deepEqual(generateCopy(source, group([])).$referenced_components["p-work"].probe, { $component_ref: "p-pub" });
 });
