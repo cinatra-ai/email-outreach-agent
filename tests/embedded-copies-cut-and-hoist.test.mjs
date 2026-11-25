@@ -34,12 +34,15 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
   KINDS,
+  LIST_PATH,
   ROOT,
+  checkFlowText,
   generateCopy,
   generateFlow,
   generateHoists,
   hoistRecordProblems,
   recordHoists,
+  recordedListText,
   gitBlobSha,
   loadChild,
   loadList,
@@ -595,4 +598,64 @@ test("(3089) omit-input on a start step removes an input named __proto__ from th
   const start = made.$referenced_components["p-start"];
   assert.deepEqual(start.metadata.cinatra, { required: ["a"], inputTitles: { a: "A" } });
   assert.deepEqual(made.inputs.map((i) => i.title), ["a"]);
+});
+
+// --- the write and check path: key order, line ends, duplicate keys ----------------
+
+test("(3089) an id the generator creates may not be an array-index key, which JavaScript orders first", () => {
+  for (const as of ["0", "1", "42", "4294967294"]) {
+    refused(() => generateHoists(child(), hoistGroup([{ step: "pub", as, declared: [] }])), "org/child", "hoist 1", "array index");
+  }
+  // Not an index: a leading zero, a sign, a fraction, 2^32 - 1 and above.
+  for (const as of ["01", "-1", "1.0", "4294967295", "1e3", " 1"]) {
+    assert.doesNotThrow(() => generateHoists(child(), hoistGroup([{ step: "pub", as, declared: [] }])), as);
+  }
+  refused(() => generateCopy(child(), group([entry("rename-step", { step: "work", to: "7" })])), "org/child", "(rename-step)", "array index");
+  // A prefix that makes a step id an index: prefix "9" and a child step "0".
+  const numbered = JSON.parse(JSON.stringify(child()).replaceAll('"work"', '"0"'));
+  refused(() => generateCopy(numbered, { ...group([]), prefix: "9" }), "org/child", "'90'", "array index");
+});
+
+test("(3089) --check names a flow text that is not in the generator's serialization: CR line ends, no final newline, trailing spaces, duplicate keys", () => {
+  const g = hoistGroup();
+  const recorded = recordHoists([g], [child()]);
+  const good = writeCopies(serialize(parent()), generateFlow(parent(), recorded, [child()]), recorded);
+  assert.deepEqual(checkFlowText(good, recorded, [child()]), []);
+  for (const [label, text] of [
+    ["CRLF", good.replaceAll("\n", "\r\n")],
+    ["no final newline", good.trimEnd()],
+    ["trailing spaces", good.replace('"parent",\n', '"parent",  \n')],
+    ["a duplicate key", good.replace('"id": "parent",', '"id": "parent",\n  "id": "parent",')],
+  ]) {
+    assert.match(checkFlowText(text, recorded, [child()]).join(), /not written in the generator's serialization/, label);
+  }
+  assert.match(checkFlowText(good, [g], [child()]).join(), /records no blob/);
+});
+
+test("(3089) --write refuses a flow text with CR line ends or a written id or its components written twice", () => {
+  const g = hoistGroup();
+  const flow = generateFlow(parent(), [g], [child()]);
+  const text = serialize(parent());
+  refused(() => writeCopies(text.replaceAll("\n", "\r\n"), flow, [g]), "CR");
+  refused(
+    () => writeCopies(text.replace('"copy": {', '"copy": {"id": "first"},\n    "copy": {'), flow, [g]),
+    "'copy'",
+    "more than once",
+  );
+  refused(
+    () => writeCopies(text.replace('"$referenced_components": {', '"$referenced_components": {},\n  "$referenced_components": {'), flow, [g]),
+    "'$referenced_components'",
+    "more than once",
+  );
+});
+
+test("(3089) --write records the hoists' blobs only into a list written in the serialization, changing nothing else", () => {
+  const g = hoistGroup();
+  const listText = serialize([g]);
+  const recordedText = recordedListText(listText, [g], [child()]);
+  assert.deepEqual(JSON.parse(recordedText), recordHoists([g], [child()]));
+  assert.equal(recordedText, serialize(recordHoists([g], [child()])));
+  assert.equal(recordedListText(recordedText, JSON.parse(recordedText), [child()]), recordedText, "a second run changed the list");
+  refused(() => recordedListText(listText.replaceAll("\n", "\r\n"), [g], [child()]), LIST_PATH, "serialization");
+  refused(() => recordedListText(listText.trimEnd(), [g], [child()]), LIST_PATH, "serialization");
 });

@@ -72,6 +72,17 @@ export function serialize(value) {
   );
 }
 
+/**
+ * Whether a text is a canonical array-index key: "0", or a digit string with no
+ * leading zero, up to 2^32 - 2. JavaScript orders such keys before every other
+ * key of an object, whatever order they were added in, so an id the generator
+ * creates (a hoist's id, a renamed or prefixed step id) may not be one: the
+ * place --write gives it and the place --check reads it in would differ.
+ */
+export function isArrayIndexKey(key) {
+  return typeof key === "string" && /^(0|[1-9][0-9]*)$/.test(key) && Number(key) <= 2 ** 32 - 2;
+}
+
 /** A member key as the flow file's serialization writes it (the same escapes as serialize). */
 export function keyToken(key) {
   return serialize(key).trimEnd();
@@ -422,6 +433,7 @@ function applyEntry(flow, entry, fail) {
     case "rename-step": {
       const step = stepOf(flow, entry.step, fail);
       if (Object.hasOwn(rc, entry.to)) fail(`step '${entry.to}' already exists`);
+      if (isArrayIndexKey(entry.to)) fail(`the new step id '${entry.to}' is an array index, which JavaScript orders first`);
       const renamed = {};
       for (const [key, value] of Object.entries(rc)) setOwn(renamed, key === entry.step ? entry.to : key, value);
       flow.$referenced_components = renamed;
@@ -579,6 +591,7 @@ function checkedHoists(child, group) {
     if (seen.has(item.as)) fail(`the id '${item.as}' is hoisted more than once`);
     seen.add(item.as);
     if (item.as === group.copyId) fail(`the id '${item.as}' collides with the group's copy`);
+    if (isArrayIndexKey(item.as)) fail(`the id '${item.as}' is an array index, which JavaScript orders first`);
     if (!Object.hasOwn(child.$referenced_components ?? {}, item.step)) fail(`step '${item.step}' is absent`);
     const omitted = (group.declared ?? []).some((entry) => entry.kind === "omit-step" && entry.step === item.step);
     if (!omitted) fail(`step '${item.step}' is kept in the copy: a hoisted step is left out of it by an omit-step entry`);
@@ -619,6 +632,7 @@ export function generateHoists(child, group) {
 function prefixFlow(flow, prefix, fail) {
   const refs = {};
   for (const [key, step] of Object.entries(flow.$referenced_components)) {
+    if (isArrayIndexKey(prefix + key)) fail(`the prefixed step id '${prefix + key}' is an array index, which JavaScript orders first`);
     moveStepId(step, prefix + step.id, fail);
     setOwn(refs, prefix + key, step);
   }
@@ -767,6 +781,18 @@ export function valueSpan(text, keys) {
  * the text does not carry yet is added as the last member of the components.
  */
 export function writeCopies(text, generated, list) {
+  // JSON strings cannot hold a raw CR, so a CR here is a line end; the generator writes LF only.
+  if (text.includes("\r")) throw new Error(`${FLOW_PATH}: the text has CR line ends; the generator writes LF only`);
+  const once = (members, name, where) => {
+    if (members.filter((member) => member.key === name).length > 1) {
+      throw new Error(`${FLOW_PATH}: ${where} '${name}' is written more than once`);
+    }
+  };
+  const root = membersOf(text, skipSpace(text, 0));
+  once(root, "$referenced_components", "the flow's member");
+  const [componentsAt] = valueSpan(text, ["$referenced_components"]);
+  const components = membersOf(text, componentsAt);
+  for (const id of generatedIds(list)) once(components, id, "the component");
   let out = text;
   for (const id of generatedIds(list)) {
     if (!Object.hasOwn(JSON.parse(out).$referenced_components, id)) {
@@ -827,6 +853,38 @@ export function hoistRecordProblems(flow, list) {
   return problems;
 }
 
+/**
+ * What --check reports for a flow text: each hoist whose recorded blob is not
+ * the step the flow carries, each generated component that differs from what
+ * --write writes, and a text that is not written in the generator's
+ * serialization (two-space JSON, LF line ends, one final newline, no trailing
+ * spaces, no key written twice, keys in JavaScript's order). Empty: current.
+ */
+export function checkFlowText(text, list, children) {
+  const committed = JSON.parse(text);
+  const generated = generateFlow(committed, list, children);
+  const problems = hoistRecordProblems(committed, list).map((problem) => `${problem} (run --write)`);
+  for (const id of generatedIds(list)) {
+    if (JSON.stringify(ownValue(committed.$referenced_components, id)) !== JSON.stringify(ownValue(generated.$referenced_components, id))) {
+      problems.push(`${id} differs from its child`);
+    }
+  }
+  if (serialize(committed) !== text) problems.push(`${FLOW_PATH} is not written in the generator's serialization`);
+  return problems;
+}
+
+/**
+ * The list text with each hoist's blob recorded (recordHoists), refusing a list
+ * text that is not in the serialization: --write rewrites the list whole, so it
+ * must change nothing but the recorded blobs.
+ */
+export function recordedListText(listText, list, children) {
+  if (serialize(JSON.parse(listText)) !== listText) {
+    throw new Error(`${LIST_PATH}: the list is not written in the generator's serialization; --write records the hoists' blobs only into one that is`);
+  }
+  return serialize(recordHoists(list, children));
+}
+
 function main(argv) {
   const mode = argv.includes("--write") ? "write" : argv.includes("--check") ? "check" : null;
   if (!mode) {
@@ -838,40 +896,28 @@ function main(argv) {
   const flowFile = path.join(ROOT, FLOW_PATH);
   const committedText = readFileSync(flowFile, "utf8");
   const committed = JSON.parse(committedText);
-  const generated = generateFlow(committed, list, children);
-  const text = serialize(generated);
   if (mode === "write") {
+    const generated = generateFlow(committed, list, children);
     const written = writeCopies(committedText, generated, list);
-    if (written !== committedText) writeFileSync(flowFile, written);
-    process.stdout.write(`embedded-copies: wrote ${generatedIds(list).join(", ")} into ${FLOW_PATH}\n`);
     // Each hoist records the blob of the step it wrote, so the next run knows that step as its own.
+    // Both texts are made before either file is written: a refusal leaves both files as they were.
     const listFile = path.join(ROOT, LIST_PATH);
     const listText = readFileSync(listFile, "utf8");
-    const recordedText = serialize(recordHoists(list, children));
-    if (list.some((group) => Array.isArray(group.hoist)) && recordedText !== listText) {
+    const hoists = list.some((group) => Array.isArray(group.hoist));
+    const recordedText = hoists ? recordedListText(listText, list, children) : listText;
+    if (written !== committedText) writeFileSync(flowFile, written);
+    process.stdout.write(`embedded-copies: wrote ${generatedIds(list).join(", ")} into ${FLOW_PATH}\n`);
+    if (recordedText !== listText) {
       writeFileSync(listFile, recordedText);
       process.stdout.write(`embedded-copies: recorded the hoisted steps' blobs in ${LIST_PATH}\n`);
     }
     return 0;
   }
-  const records = hoistRecordProblems(committed, list);
-  for (const problem of records) process.stderr.write(`embedded-copies: ${problem} (run --write)\n`);
-  if (text === committedText && records.length === 0) {
-    process.stdout.write(`embedded-copies: ${FLOW_PATH} carries exactly the generated copies\n`);
-    return 0;
-  }
-  if (text === committedText) return 1;
-  const differing = generatedIds(list)
-    .filter(
-      (id) =>
-        JSON.stringify(ownValue(committed.$referenced_components, id)) !==
-        JSON.stringify(ownValue(generated.$referenced_components, id)),
-    );
-  for (const id of differing) process.stderr.write(`embedded-copies: ${id} differs from its child\n`);
-  if (differing.length === 0) {
-    process.stderr.write(`embedded-copies: ${FLOW_PATH} is not written in the generator's serialization\n`);
-  }
-  return 1;
+  const problems = checkFlowText(committedText, list, children);
+  for (const problem of problems) process.stderr.write(`embedded-copies: ${problem}\n`);
+  if (problems.length > 0) return 1;
+  process.stdout.write(`embedded-copies: ${FLOW_PATH} carries exactly the generated copies\n`);
+  return 0;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
