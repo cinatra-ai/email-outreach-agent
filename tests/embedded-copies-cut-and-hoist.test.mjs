@@ -659,3 +659,84 @@ test("(3089) --write records the hoists' blobs only into a list written in the s
   refused(() => recordedListText(listText.replaceAll("\n", "\r\n"), [g], [child()]), LIST_PATH, "serialization");
   refused(() => recordedListText(listText.trimEnd(), [g], [child()]), LIST_PATH, "serialization");
 });
+
+// --- every step that renders text names only its own inputs -----------------------
+
+test("(3089) omit-input of the drafting child's template step input is refused, naming the step and the name", () => {
+  const list = loadList();
+  const index = list.findIndex((g) => g.repository === "cinatra-ai/email-drafting-agent");
+  const drafting = list[index];
+  const source = loadChild(drafting);
+  assert.equal(source.$referenced_components.check_inputs_predicate.component_type, "PluginTemplateNode");
+  assert.doesNotThrow(() => generateCopy(source, drafting));
+  const declared = [
+    ...drafting.declared,
+    { child: drafting.repository, kind: "omit-input", step: "check_inputs_predicate", input: "matches", reason: "probe" },
+  ];
+  refused(() => generateCopy(source, { ...drafting, declared }), drafting.repository, "drafts-check_inputs_predicate renders matches");
+});
+
+/** The small child with one more step `tpl` of the given kind, taking `a` and `xs`, with one template text. */
+function templated(text, kind = "PluginTemplateNode", field = "template") {
+  const source = child();
+  source.$referenced_components.tpl = {
+    component_type: kind,
+    id: "tpl",
+    name: "tpl",
+    inputs: [
+      { title: "a", type: "string" },
+      { title: "xs", type: "array" },
+    ],
+    outputs: [{ title: "output", type: "string" }],
+  };
+  const keys = field.split(".");
+  let node = source.$referenced_components.tpl;
+  for (const key of keys.slice(0, -1)) node = node[key] = /^\d+$/.test(keys[keys.indexOf(key) + 1]) ? [] : {};
+  node[keys[keys.length - 1]] = text;
+  return source;
+}
+const findings = (text, kind, field) => {
+  try {
+    generateCopy(templated(text, kind, field), group([]));
+    return [];
+  } catch (error) {
+    return [...error.message.matchAll(/p-tpl renders (\S+?),/g)].map((m) => m[1]);
+  }
+};
+
+test("(3089) the names a template reads through if, for, filters, filter arguments and attributes are its inputs", () => {
+  assert.deepEqual(findings("{% if a and (a|length > 0) %}x{% else %}y{% endif %}"), []);
+  assert.deepEqual(findings("{% if m %}x{% endif %}"), ["m"]);
+  assert.deepEqual(findings("{% if a %}{% elif m == 'v' %}{% endif %}"), ["m"]);
+  assert.deepEqual(findings("{% for i in ys %}{{ i }}{% endfor %}"), ["ys"]);
+  assert.deepEqual(findings("{{ y | tojson }}"), ["y"]);
+  assert.deepEqual(findings("{{ z.attr }}{{ a['k'] }}{{ a[w] }}"), ["z", "w"]);
+  assert.deepEqual(findings("{{ a | default(w) }}"), ["w"]);
+  assert.deepEqual(findings("{{ a if c else d }}"), ["c", "d"]);
+  assert.deepEqual(findings("{%- if m -%}x{%- endif -%}{{- n -}}"), ["m", "n"]);
+  // pyagentspec reads a bare placeholder inside a comment (the input-hint sentinel) as an input.
+  assert.deepEqual(findings("{# pyagentspec-input-hint: {{ hint }} #}{{ a | tojson }}"), ["hint"]);
+  // Every template-bearing text of the step counts, wherever it sits.
+  assert.deepEqual(findings("{{ q }}", "OutputMessageNode", "message"), ["q"]);
+  assert.deepEqual(findings("Hello {{ q }}", "ApiNode", "data.input.text"), ["q"]);
+  assert.deepEqual(findings("{{ q }}", "BranchingNode", "mapping.0"), ["q"]);
+  assert.deepEqual(findings("{% if q %}{% endif %}", "PluginRegexNode", "metadata.note"), ["q"]);
+});
+
+test("(3089) set locals, loop variables, literals, tests, builtins and the base url are not false findings", () => {
+  assert.deepEqual(findings("{% for i in xs %}{{ i.name }}{{ loop.index }}{% endfor %}"), []);
+  assert.deepEqual(findings("{% for k, v in xs %}{{ k }}={{ v }}{% endfor %}"), []);
+  assert.deepEqual(findings("{% set s = a | upper %}{{ s }}"), []);
+  assert.deepEqual(findings("{% set s %}{{ a }}{% endset %}{{ s }}"), []);
+  assert.deepEqual(findings("{{ 'text' }}{{ 1 }}{{ true }}{{ none }}{% if a is defined %}{% endif %}{% if a is not none %}{% endif %}"), []);
+  assert.deepEqual(findings("{% for n in range(3) %}{{ n }}{% endfor %}{{ CINATRA_BASE_URL }}"), []);
+  assert.deepEqual(findings("{{ a | replace('x', 'y') | join(', ') }}{{ a | indent(width=2) }}"), []);
+  // A local is a local only after it is set, and a loop variable only inside its loop.
+  assert.deepEqual(findings("{{ s }}{% set s = a %}"), ["s"]);
+  assert.deepEqual(findings("{% for i in xs %}{% endfor %}{{ i }}"), ["i"]);
+});
+
+test("(3089) a template tag the generator does not read is refused, not passed", () => {
+  refused(() => generateCopy(templated("{% macro m() %}{% endmacro %}"), group([])), "p-tpl uses the tag 'macro'");
+  refused(() => generateCopy(templated("{% include 'x' %}"), group([])), "p-tpl uses the tag 'include'");
+});
