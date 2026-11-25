@@ -159,6 +159,9 @@
       "$component_ref": "uuid_match"
     },
     {
+      "$component_ref": "campaign_match"
+    },
+    {
       "$component_ref": "check_inputs_predicate"
     },
     {
@@ -202,9 +205,19 @@
     },
     {
       "component_type": "ControlFlowEdge",
-      "name": "uuid_match_to_predicate",
+      "name": "uuid_match_to_campaign_match",
       "from_node": {
         "$component_ref": "uuid_match"
+      },
+      "to_node": {
+        "$component_ref": "campaign_match"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "campaign_match_to_predicate",
+      "from_node": {
+        "$component_ref": "campaign_match"
       },
       "to_node": {
         "$component_ref": "check_inputs_predicate"
@@ -411,15 +424,15 @@
     },
     {
       "component_type": "DataFlowEdge",
-      "name": "start_to_check_inputs_predicate_campaignId",
+      "name": "start_to_campaign_match_text",
       "source_node": {
         "$component_ref": "start"
       },
       "source_output": "campaignId",
       "destination_node": {
-        "$component_ref": "check_inputs_predicate"
+        "$component_ref": "campaign_match"
       },
-      "destination_input": "campaignId"
+      "destination_input": "text"
     },
     {
       "component_type": "DataFlowEdge",
@@ -432,6 +445,18 @@
         "$component_ref": "check_inputs_predicate"
       },
       "destination_input": "matches"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "campaign_match_to_predicate_campaignMatches",
+      "source_node": {
+        "$component_ref": "campaign_match"
+      },
+      "source_output": "output",
+      "destination_node": {
+        "$component_ref": "check_inputs_predicate"
+      },
+      "destination_input": "campaignMatches"
     },
     {
       "component_type": "DataFlowEdge",
@@ -1146,8 +1171,7 @@
           "title": "matches"
         },
         {
-          "title": "campaignId",
-          "type": "string"
+          "title": "campaignMatches"
         }
       ],
       "outputs": [
@@ -1161,7 +1185,7 @@
       ],
       "input_mapping": {},
       "output_mapping": {},
-      "template": "{% set c = (campaignId or '')|string|trim(' \\t\\r\\n') %}{% if not (matches and (matches|length > 0)) %}missing{% elif c|length == 36 and c[8] == '-' and c[13] == '-' and c[18] == '-' and c[23] == '-' and c.split('-')|length == 5 and (c|list|reject('in', '0123456789abcdefABCDEF-')|list|length) == 0 %}present{% else %}no_campaign{% endif %}",
+      "template": "{% if not (matches and (matches|length > 0)) %}missing{% elif campaignMatches and (campaignMatches|length > 0) %}present{% else %}no_campaign{% endif %}",
       "component_plugin_name": "NodesPlugin",
       "component_plugin_version": "26.1.0"
     },
@@ -1214,6 +1238,41 @@
           "purpose": "plain-language-ending-for-a-run-without-a-campaign"
         }
       }
+    },
+    "campaign_match": {
+      "component_type": "PluginRegexNode",
+      "id": "campaign_match",
+      "name": "campaign_match",
+      "metadata": {
+        "cinatra": {
+          "publishes": false,
+          "purpose": "campaign-id-is-a-uuid"
+        }
+      },
+      "inputs": [
+        {
+          "title": "text",
+          "type": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "title": "output",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "branches": [
+        "next"
+      ],
+      "input_mapping": {},
+      "output_mapping": {},
+      "regex_pattern": "^[ \\t\\r\\n]*([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})[ \\t\\r\\n]*$",
+      "return_first_match_only": false,
+      "component_plugin_name": "NodesPlugin",
+      "component_plugin_version": "26.1.0"
     }
   }
 }

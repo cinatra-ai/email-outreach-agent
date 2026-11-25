@@ -432,7 +432,7 @@ test("(3089) the committed delivery snapshot and group give exactly the delivery
   assert.equal(deliveryGroup.declared.length, 17);
   assert.deepEqual(deliveryGroup.declared.map(({ reason, ...rest }) => rest), DELIVERY_SHAPE);
   assert.ok(deliveryGroup.declared.every((entry) => typeof entry.reason === "string" && entry.reason.trim() !== ""));
-  assert.deepEqual(deliveryGroup.hoist, [{ step: "send", as: "send", declared: [] }]);
+  assert.deepEqual(deliveryGroup.hoist, [{ step: "send", as: "send", declared: [], blob: "2afd560692886e6d45ec3dfab4bbfa4f47269792" }]);
 
   assert.equal(serialize(generateCopy(deliveryChild, deliveryGroup)), subflowText);
   const hoists = generateHoists(deliveryChild, deliveryGroup);

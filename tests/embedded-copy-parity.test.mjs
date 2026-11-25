@@ -18,6 +18,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
   FLOW_PATH,
+  checkFlowText,
   KINDS,
   ROOT,
   generateCopy,
@@ -413,16 +414,161 @@ test("(7) the parent hands each copy only inputs it takes and reads only outputs
 });
 
 // The drafting pack ships the copy it expects the outreach to carry, taken whole
-// (cinatra-ai/email-drafting-agent e94f016cf9cf420408b342adbcc6569615b77877,
+// (cinatra-ai/email-drafting-agent c33072d749a3a088903795410771521d471e841c,
 // tests/fixtures/email-outreach-drafting-subflow.json, blob
-// f38b7c4856dae90573ec57c61d3b26c7cee07d7f, copied here under the same name).
+// e251f85f37b5c7d6306f32eea8fcb792e7a25bba, copied here under the same name).
 test("(7) the drafting copy is exactly the copy the drafting pack expects at the pinned commit", () => {
   const index = groupFor("email-drafting-subflow");
-  assert.equal(list[index].commit, "e94f016cf9cf420408b342adbcc6569615b77877");
+  assert.equal(list[index].commit, "c33072d749a3a088903795410771521d471e841c");
   const expected = readFileSync(path.join(ROOT, "tests", "fixtures", "email-outreach-drafting-subflow.json"));
-  assert.equal(gitBlobSha(expected), "f38b7c4856dae90573ec57c61d3b26c7cee07d7f");
+  assert.equal(gitBlobSha(expected), "e251f85f37b5c7d6306f32eea8fcb792e7a25bba");
   assert.equal(serialize(generateCopy(children[index], list[index])), expected.toString("utf8"));
   assert.equal(serialize(flow.$referenced_components["email-drafting-subflow"]), expected.toString("utf8"));
+});
+
+// The snapshot's source revision: the drafting pack's main at its pull request 64 (the campaign id is tested by a
+// regex step, `campaign_match`, and the decision is a plain three-way choice).
+test("(3562) the drafting snapshot is the drafting pack's flow file at c33072d, and nothing older", () => {
+  const group = list[groupFor("email-drafting-subflow")];
+  assert.equal(group.repository, "cinatra-ai/email-drafting-agent");
+  assert.equal(group.commit, "c33072d749a3a088903795410771521d471e841c");
+  assert.equal(group.blob, "9d314d356f38f6150f2682078d85590b96489e59");
+  assert.equal(gitBlobSha(loadChildBuffer(group)), "9d314d356f38f6150f2682078d85590b96489e59");
+  const child = loadChild(group);
+  assert.equal(child.$referenced_components.campaign_match?.component_type, "PluginRegexNode");
+  assert.equal(child.$referenced_components.check_inputs_predicate.inputs.some((i) => i.title === "campaignId"), false);
+});
+
+// --check names a copy that drifts from the pinned source: a hand edit of the copy in the flow, and a snapshot
+// that no longer gives the committed copy, are both reported; the committed pair is current.
+test("(3562) --check fails when the embedded drafting copy drifts from its pinned source", () => {
+  assert.deepEqual(checkFlowText(flowText, list, children), []);
+  const index = groupFor("email-drafting-subflow");
+  // The copy is edited in the flow: the regex pattern loses its white-space allowance.
+  const editedCopy = JSON.parse(flowText);
+  const step = editedCopy.$referenced_components["email-drafting-subflow"].$referenced_components["drafts-campaign_match"];
+  step.regex_pattern = step.regex_pattern.replace("[ \\t\\r\\n]*", "");
+  assert.notEqual(step.regex_pattern, flow.$referenced_components["email-drafting-subflow"].$referenced_components["drafts-campaign_match"].regex_pattern);
+  assert.match(checkFlowText(serialize(editedCopy), list, children).join("\n"), /email-drafting-subflow differs from its child/);
+  // The source moves under the committed copy: the snapshot's pattern is changed, the flow is not.
+  const movedChild = JSON.parse(JSON.stringify(children[index]));
+  movedChild.$referenced_components.campaign_match.regex_pattern = "^[0-9a-f]{8}$";
+  const moved = children.map((child, at) => (at === index ? movedChild : child));
+  assert.match(checkFlowText(flowText, list, moved).join("\n"), /email-drafting-subflow differs from its child/);
+  // The recipient and delivery copies are not reported for it.
+  assert.doesNotMatch(checkFlowText(serialize(editedCopy), list, children).join("\n"), /recipient-selection-subflow|delivery-subflow/);
+});
+
+const DRAFTS = flow.$referenced_components["email-drafting-subflow"].$referenced_components;
+const campaignPattern = DRAFTS["drafts-campaign_match"].regex_pattern;
+
+test("(3562) the embedded copy carries the campaign regex step with the drafting pack's exact pattern, and no older check", () => {
+  const step = DRAFTS["drafts-campaign_match"];
+  assert.equal(step.component_type, "PluginRegexNode");
+  assert.equal(step.return_first_match_only, false);
+  assert.equal(
+    step.regex_pattern,
+    "^[ \\t\\r\\n]*([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})[ \\t\\r\\n]*$",
+  );
+  const predicate = DRAFTS["drafts-check_inputs_predicate"];
+  assert.deepEqual(predicate.inputs.map((i) => i.title), ["matches", "campaignMatches"]);
+  assert.ok(!predicate.template.includes("{% set") && !predicate.template.includes("trim") && !predicate.template.includes("campaignId"));
+  // The only model-driven step of the copy is the drafting step itself.
+  const llmSteps = Object.values(DRAFTS).filter((s) => s.data && typeof s.data === "object" && (s.data.system !== undefined || s.data.cinatra_llm !== undefined));
+  assert.deepEqual(llmSteps.map((s) => s.id), ["drafts-draft"]);
+  const edge = (from, to) =>
+    flow.$referenced_components["email-drafting-subflow"].control_flow_connections.some(
+      (e) => e.from_node.$component_ref === from && e.to_node.$component_ref === to,
+    );
+  assert.ok(edge("drafts-uuid_match", "drafts-campaign_match") && edge("drafts-campaign_match", "drafts-check_inputs_predicate"));
+  assert.ok(!edge("drafts-uuid_match", "drafts-check_inputs_predicate"));
+  const data = flow.$referenced_components["email-drafting-subflow"].data_flow_connections.map(
+    (e) => `${e.source_node.$component_ref}.${e.source_output} -> ${e.destination_node.$component_ref}.${e.destination_input}`,
+  );
+  assert.ok(data.includes("drafts-start.campaignId -> drafts-campaign_match.text"));
+  assert.ok(data.includes("drafts-campaign_match.output -> drafts-check_inputs_predicate.campaignMatches"));
+  assert.ok(!data.some((e) => e.endsWith("drafts-check_inputs_predicate.campaignId")));
+});
+
+/** Python's re.findall as the runtime's regex step calls it (no flags), empty matches dropped. */
+function findall(pattern, text) {
+  return [...String(text).matchAll(new RegExp(pattern, "g"))].map((m) => (m[1] === undefined ? m[0] : m[1])).filter((m) => m !== "");
+}
+
+// The pattern has the same meaning in Python and in JavaScript (no \A, \Z or named group). The runtime's step is not
+// available to this repository's suite, so the call shape the drafting pack's own suite uses is repeated here.
+test("(3562) the campaign pattern accepts a valid id, and refuses a wrong length, non-hex and invisible characters", () => {
+  const U = "11111111-1111-4111-8111-111111111111";
+  const matches = (text) => findall(campaignPattern, text).length > 0;
+  for (const ok of [U, U.toUpperCase(), "abcdef01-2345-6789-ABCD-EF0123456789", ` ${U}`, `\n${U}\r\n`, `  ${U} \t\r\n`]) {
+    assert.ok(matches(ok), JSON.stringify(ok));
+  }
+  assert.deepEqual(findall(campaignPattern, `  ${U}\n`), [U]);
+  const refused = {
+    empty: "",
+    "36 characters, 35 hex": U.slice(1),
+    "37 characters": `${U}a`,
+    "35 characters": U.slice(0, 35),
+    "non-hex": `g${U.slice(1)}`,
+    "hyphen misplaced": "1111111-11111-4111-8111-111111111111",
+    "U+FEFF before": `\ufeff${U}`,
+    "U+FEFF after": `${U}\ufeff`,
+    "U+200B before": `\u200b${U}`,
+    "U+200B inside": `${U.slice(0, 10)}\u200b${U.slice(11)}`,
+    "NBSP before": `\u00a0${U}`,
+    "vertical tab before": `\v${U}`,
+    "two ids": `${U} ${U}`,
+    "an id and text": `${U} x`,
+    "a line and then text": `${U}\nx`,
+  };
+  for (const [name, text] of Object.entries(refused)) assert.equal(matches(text), false, name);
+});
+
+/** The decision template under the grammar's rules (a list is true when it holds an item), for the two lists it reads. */
+function decide(template, lists) {
+  const truthy = (list) => Array.isArray(list) && list.length > 0;
+  const match = template.match(/^\{% if (.+?) %\}(\w+)\{% elif (.+?) %\}(\w+)\{% else %\}(\w+)\{% endif %\}$/);
+  assert.ok(match, "the template is one if/elif/else");
+  const run = (condition) =>
+    Function(
+      "T", "matches", "campaignMatches",
+      `return ${condition.replace(/\bnot\b/g, "!").replace(/\band\b/g, "&&").replace(/\bor\b/g, "||").replace(/(\w+)\|length/g, "$1.length").replace(/\b(matches|campaignMatches)\b(?!\.length)/g, "T($1)")};`,
+    )(truthy, lists.matches, lists.campaignMatches);
+  return run(match[1]) ? match[2] : run(match[3]) ? match[4] : match[5];
+}
+
+test("(3562) the three outcomes of the embedded drafting decision run to their own steps, and every one ends in the outreach's sender step", () => {
+  const copy = flow.$referenced_components["email-drafting-subflow"];
+  const U = "11111111-1111-4111-8111-111111111111";
+  const recipientPattern = DRAFTS["drafts-uuid_match"].regex_pattern;
+  const route = (recipients, campaign) => {
+    const verdict = decide(DRAFTS["drafts-check_inputs_predicate"].template, {
+      matches: findall(recipientPattern, recipients),
+      campaignMatches: findall(campaignPattern, campaign),
+    });
+    const branch = DRAFTS["drafts-check_inputs"].mapping[verdict] ?? "default";
+    const edge = copy.control_flow_connections.find((e) => e.from_node.$component_ref === "drafts-check_inputs" && e.from_branch === branch);
+    return { verdict, to: edge.to_node.$component_ref };
+  };
+  assert.deepEqual(DRAFTS["drafts-check_inputs"].branches, ["default", "skip", "no_campaign"]);
+  assert.deepEqual(route(U, U), { verdict: "present", to: "drafts-draft" });
+  assert.deepEqual(route(U, ` ${U}\n`), { verdict: "present", to: "drafts-draft" });
+  assert.deepEqual(route("", U), { verdict: "missing", to: "drafts-inputs_missing" });
+  assert.deepEqual(route("", ""), { verdict: "missing", to: "drafts-inputs_missing" }, "the recipient list is asked first");
+  for (const campaign of ["", "\ufeff", "\u200b", `\ufeff${U}`, `${U}a`, U.slice(1), 12345]) {
+    assert.deepEqual(route(U, campaign), { verdict: "no_campaign", to: "drafts-campaign_missing" }, JSON.stringify(campaign));
+  }
+  // The copy's own continuation: drafting runs on through its review to the end, and the two stops go to the end at once.
+  const next = (from) => copy.control_flow_connections.filter((e) => e.from_node.$component_ref === from).map((e) => e.to_node.$component_ref);
+  assert.deepEqual(next("drafts-draft"), ["drafts-read_drafts"]);
+  assert.deepEqual(next("drafts-read_drafts"), ["drafts-file_drafts"]);
+  assert.deepEqual(next("drafts-file_drafts"), ["drafts-approval_gate"]);
+  assert.deepEqual(next("drafts-approval_gate"), ["drafts-end"]);
+  assert.deepEqual(next("drafts-inputs_missing"), ["drafts-end"]);
+  assert.deepEqual(next("drafts-campaign_missing"), ["drafts-end"]);
+  // Through the outreach: the one end of the copy is followed by the sender step, whichever outcome ran.
+  const outer = flow.control_flow_connections.filter((e) => e.from_node.$component_ref === "drafts_flow");
+  assert.deepEqual(outer.map((e) => [e.to_node.$component_ref, e.from_branch ?? null]), [["sender_flow", null]]);
 });
 
 // The delivery pack does the same for its copy and for its send step, which the
@@ -435,5 +581,5 @@ test("(7) the delivery copy and the hoisted send are exactly what the delivery p
   const send = readFileSync(path.join(ROOT, "tests", "fixtures", "email-outreach-delivery-send.json"), "utf8");
   assert.equal(serialize(flow.$referenced_components["email-delivery-subflow"]), copy);
   assert.equal(serialize(flow.$referenced_components.send), send);
-  assert.deepEqual(list[index].hoist, [{ step: "send", as: "send", declared: [] }]);
+  assert.deepEqual(list[index].hoist, [{ step: "send", as: "send", declared: [], blob: "2afd560692886e6d45ec3dfab4bbfa4f47269792" }]);
 });

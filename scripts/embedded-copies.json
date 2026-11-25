@@ -97,9 +97,9 @@
     "prefix": "drafts-",
     "package": "@cinatra-ai/email-drafting-agent",
     "repository": "cinatra-ai/email-drafting-agent",
-    "commit": "e94f016cf9cf420408b342adbcc6569615b77877",
+    "commit": "c33072d749a3a088903795410771521d471e841c",
     "snapshot": "scripts/children/email-drafting-agent.oas.json",
-    "blob": "ef5f8ecc6ac9aae598f54ee29005166ecf984c4a",
+    "blob": "9d314d356f38f6150f2682078d85590b96489e59",
     "declared": [
       {
         "child": "cinatra-ai/email-drafting-agent",
@@ -317,7 +317,8 @@
       {
         "step": "send",
         "as": "send",
-        "declared": []
+        "declared": [],
+        "blob": "2afd560692886e6d45ec3dfab4bbfa4f47269792"
       }
     ]
   }
