@@ -433,3 +433,238 @@ describe("the gate's answer is the host's lift of the list step's write", () => 
     assert.equal(generationAcceptsScope(PARAMS.refreshValue), false);
   });
 });
+
+// HOW TRY AGAIN ADVANCES THE STEP (round 5 finding: "the refresh edge after the
+// gate is unreachable ... never proves the flow advances").
+//
+// Try again does not advance the gate by a Continue, and it must not: nothing is
+// picked, so Continue stays unavailable. The host advances it. cinatra-ai/cinatra
+// #4772 reads the component's write with `listStepRefreshRequest` (a mid-run
+// `:list-picker` step and a nonblank `refresh`), sends
+// `buildListStepRefreshPayload(refresh)` at once as the step's answer, and the
+// server takes it only when it equals the refresh value the binding declared
+// (`params.refreshValue`, recorded with the pause), then resumes the gate with
+// exactly that value as its text (packages/agents/src/hitl-gate-submit.ts,
+// review-task-actions.ts). The fixtures below copy those readings; they are
+// documented copies, not imports, because an extension never imports the host.
+// This suite proves every link a package can hold: the declared value is the
+// value the host sends, the gate takes it as its answer, the branch maps it to a
+// branch that reads the CRM again, and that read returns to the SAME gate node
+// (the host keeps the step by the signed node id, so a copy of the gate would be
+// a new step).
+
+const PKG = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+const LIST_PICKER_BINDING = (PKG.cinatra.fieldRenderers ?? []).find(
+  (binding) => binding.id === "@cinatra-ai/email-outreach-agent:list-picker",
+);
+const HOST_REFRESH_KEY = "listStepRefresh";
+
+/** Copy of `isMidRunListStepGate` (hitl-gate-submit.ts); a setup gate's task id starts with "setup-". */
+const hostIsMidRunListStep = (xRenderer, reviewTaskId) =>
+  xRenderer.endsWith(":list-picker") && !reviewTaskId.startsWith("setup-");
+
+/** Copy of `listStepRefreshRequest` (hitl-gate-submit.ts): what the hosts read from the write. */
+function hostRefreshRequest(xRenderer, reviewTaskId, written) {
+  if (!hostIsMidRunListStep(xRenderer, reviewTaskId)) return null;
+  if (written === null || typeof written !== "object" || Array.isArray(written)) return null;
+  const refresh = written.refresh;
+  return typeof refresh === "string" && refresh.trim().length > 0 ? refresh : null;
+}
+
+/** Copy of `buildListStepRefreshPayload` (hitl-gate-submit.ts). */
+const hostRefreshPayload = (refresh) => ({
+  approved: true,
+  approvedAt: "2026-11-25T00:00:00.000Z",
+  userResponse: refresh,
+  [HOST_REFRESH_KEY]: refresh,
+});
+
+/**
+ * Copy of the server's decision (review-task-actions.ts with
+ * `listStepRefreshIsRequest`, `isListStepRefreshPayloadShape` and
+ * `listStepRefreshAccepted`): the gate's resume text, or null when refused.
+ */
+function hostServerResumeText({ xRenderer, reviewTaskId, gateFields, declared, payload }) {
+  if (!hostIsMidRunListStep(xRenderer, reviewTaskId)) return null;
+  if (gateFields.includes(HOST_REFRESH_KEY)) return null;
+  const allowed = new Set(["approved", "approvedAt", "userResponse", HOST_REFRESH_KEY]);
+  if (Object.keys(payload).some((key) => !allowed.has(key))) return null;
+  const requested = payload[HOST_REFRESH_KEY];
+  if (typeof requested !== "string" || requested.trim().length === 0 || payload.userResponse !== requested) return null;
+  if (typeof declared !== "string" || declared.trim().length === 0 || requested !== declared) return null;
+  return declared;
+}
+
+/** The flows that hold a node id among their `nodes`. */
+function flowsHolding(nodeId) {
+  const flows = [];
+  const walk = (node) => {
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (node === null || typeof node !== "object") return;
+    if (node.component_type === "Flow" && Array.isArray(node.nodes)) {
+      if (node.nodes.some((ref) => ref?.$component_ref === nodeId)) flows.push(node);
+    }
+    Object.values(node).forEach(walk);
+  };
+  walk(OAS);
+  return flows;
+}
+
+/** How many nodes in the whole flow file carry an id. */
+function nodeCount(nodeId) {
+  let count = 0;
+  const walk = (node) => {
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (node === null || typeof node !== "object") return;
+    if (node.id === nodeId && typeof node.component_type === "string") count += 1;
+    Object.values(node).forEach(walk);
+  };
+  walk(OAS);
+  return count;
+}
+
+describe("Try again advances the list step through the host's refresh", () => {
+  const nodes = nodesById();
+  const GATE = "recipients-scope_gate";
+  const BRANCH = "recipients-scope_branch";
+  const gate = nodes.get(GATE);
+  const branch = nodes.get(BRANCH);
+  const declared = LIST_PICKER_BINDING?.params?.refreshValue;
+  const reviewTaskId = "wayflow-task-1";
+  const gateFields = () => gate.outputs.map((output) => output.title);
+
+  it("the binding declares a refresh value where the host reads it (params.refreshValue)", () => {
+    assert.ok(LIST_PICKER_BINDING, "package.json declares no list-picker binding");
+    assert.equal(typeof declared, "string");
+    assert.ok(declared.trim().length > 0, "the declared refresh value is blank");
+    assert.ok(hostIsMidRunListStep(LIST_PICKER_BINDING.id, reviewTaskId), "the host does not read this binding as a list step");
+    assert.equal(gate.metadata.cinatra.inputRenderers.accountScope, LIST_PICKER_BINDING.id);
+  });
+
+  it("the server takes the host's refresh answer for the declared value and resumes the gate with it", () => {
+    const resume = hostServerResumeText({
+      xRenderer: LIST_PICKER_BINDING.id,
+      reviewTaskId,
+      gateFields: gateFields(),
+      declared,
+      payload: hostRefreshPayload(declared),
+    });
+    assert.equal(resume, declared);
+    // The gate's one output takes the resume text: a string, as the gate declares.
+    assert.deepEqual(gate.outputs, [{ title: "accountScope", type: "string" }]);
+    assert.equal(typeof resume, "string");
+    assert.equal(
+      hostServerResumeText({
+        xRenderer: LIST_PICKER_BINDING.id,
+        reviewTaskId,
+        gateFields: gateFields(),
+        declared,
+        payload: hostRefreshPayload(`${declared}-other`),
+      }),
+      null,
+      "the server takes a value the binding did not declare",
+    );
+  });
+
+  it("the gate's answer reaches the branch, which maps the declared value to a branch that is not the pick's", () => {
+    const [flow] = flowsHolding(GATE);
+    assert.ok(flow, "no flow holds the gate");
+    const feeds = flow.data_flow_connections.filter(
+      (edge) => edge.source_node.$component_ref === GATE && edge.destination_node.$component_ref === BRANCH,
+    );
+    assert.deepEqual(
+      feeds.map((edge) => [edge.source_output, edge.destination_input]),
+      [["accountScope", "accountScope"]],
+    );
+    assert.deepEqual(branch.inputs.map((input) => input.title), ["accountScope"]);
+    const taken = branch.mapping[declared];
+    assert.equal(typeof taken, "string", "the branch maps no branch for the declared value");
+    assert.notEqual(taken, "default");
+    assert.ok(branch.branches.includes(taken), `the branch declares no "${taken}" branch`);
+  });
+
+  it("that branch reads the CRM again and returns to the same gate node, with no other pause on the way", () => {
+    assert.equal(nodeCount(GATE), 1, "the flow file holds more than one node with the gate's id");
+    const flows = flowsHolding(GATE);
+    assert.equal(flows.length, 1, "more than one flow holds the gate");
+    const [flow] = flows;
+    const taken = branch.mapping[declared];
+    const edgesFrom = (id) => flow.control_flow_connections.filter((edge) => edge.from_node.$component_ref === id);
+    const first = edgesFrom(BRANCH).filter((edge) => edge.from_branch === taken);
+    assert.equal(first.length, 1, `the "${taken}" branch has ${first.length} edges`);
+    const path = [];
+    let at = first[0].to_node.$component_ref;
+    while (at !== GATE) {
+      assert.ok(!path.includes(at), `the refresh path loops without the gate at ${at}`);
+      path.push(at);
+      const node = nodes.get(at);
+      assert.ok(node, `the refresh path reaches ${at}, which is not a node`);
+      assert.ok(
+        !["InputMessageNode", "BranchingNode", "EndNode", "FlowNode"].includes(node.component_type),
+        `the refresh path reaches a ${node.component_type} at ${at}`,
+      );
+      const next = edgesFrom(at);
+      assert.equal(next.length, 1, `${at} has ${next.length} edges on the refresh path`);
+      at = next[0].to_node.$component_ref;
+    }
+    const reads = path.filter((id) => (nodes.get(id).metadata?.cinatra?.tools ?? []).includes("crm_list_search"));
+    assert.equal(reads.length, 1, "the refresh path does not read the CRM's lists once");
+    const hands = path.filter((id) => nodes.get(id).metadata?.cinatra?.purpose === "list-picker-gate-content");
+    assert.equal(hands.length, 1, "the refresh path does not hand the new lists to the picker");
+    assert.ok(path.indexOf(reads[0]) < path.indexOf(hands[0]), "the lists are handed before they are read");
+  });
+
+  it("a pick never takes the refresh branch", () => {
+    const pick = JSON.stringify({ type: "list", listIds: ["view-a"], listNames: ["A"], snapshotAt: "x" });
+    assert.equal(Object.hasOwn(branch.mapping, pick), false);
+  });
+
+  describe("the component's Try again, as the hosts read it", () => {
+    before(async () => {
+      const { JSDOM } = await import("jsdom");
+      dom = new JSDOM("<!doctype html><html><body></body></html>");
+      globalThis.window = dom.window;
+      globalThis.document = dom.window.document;
+      globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+      React = await import("react");
+      act = React.act;
+      ({ createRoot } = await import("react-dom/client"));
+      Renderer = (await import(ENTRY_URL.href)).default;
+    });
+
+    after(() => {
+      delete globalThis.window;
+      delete globalThis.document;
+      delete globalThis.IS_REACT_ACT_ENVIRONMENT;
+      dom?.window.close();
+    });
+
+    it("a press with the declared params writes what the hosts send as the declared refresh, and Continue stays unavailable", async () => {
+      for (const listsRead of ["ok", "failed"]) {
+        const view = await mount({ value: { lists: [], listsRead }, bindingParams: LIST_PICKER_BINDING.params });
+        try {
+          const button = view.container.querySelector('[data-testid="list-picker-try-again"]');
+          assert.ok(button, `${listsRead}: no Try again`);
+          assert.equal(button.getAttribute("type"), "button", "Try again would submit a form");
+          await click(button);
+          assert.equal(view.writes.length, 1, `${listsRead}: one press writes ${view.writes.length} times`);
+          const refresh = hostRefreshRequest(LIST_PICKER_BINDING.id, reviewTaskId, view.writes[0]);
+          assert.equal(refresh, declared, `${listsRead}: the hosts read no refresh of the declared value`);
+          const resume = hostServerResumeText({
+            xRenderer: LIST_PICKER_BINDING.id,
+            reviewTaskId,
+            gateFields: gateFields(),
+            declared,
+            payload: hostRefreshPayload(refresh),
+          });
+          assert.equal(branch.branches.includes(branch.mapping[resume]), true, `${listsRead}: the resume text takes no branch`);
+          assert.notEqual(branch.mapping[resume], "default");
+          assert.equal(hostLiftListPicker(view.writes[0], "x"), null, `${listsRead}: the press lifts as a pick`);
+          assert.deepEqual(view.reports, [false], `${listsRead}: Continue becomes available`);
+        } finally {
+          await view.unmount();
+        }
+      }
+    });
+  });
+});
