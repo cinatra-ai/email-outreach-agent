@@ -191,6 +191,16 @@ function refReadBy(flowNodeId, stepId, input, recipientsEnd) {
   return recipientsEnd[into[0].source_output];
 }
 
+/** The value of the recipients sub-flow that a top-level step of the outreach reads as `input`. */
+function refReadByTopLevel(stepId, input, recipientsEnd) {
+  const into = oas.data_flow_connections.filter(
+    (e) => refOf(e.destination_node) === stepId && e.destination_input === input,
+  );
+  assert.equal(into.length, 1, `${stepId}.${input} is not fed one value`);
+  assert.equal(refOf(into[0].source_node), "recipients_flow", `${stepId}.${input} is not fed by the recipients sub-flow`);
+  return recipientsEnd[into[0].source_output];
+}
+
 function readList(store, ref) {
   const obj = store.get(ref);
   assert.ok(obj, `no object at ${ref}`);
@@ -207,10 +217,14 @@ test("a recipient removed on the review does not reach drafting", () => {
 test("a recipient removed on the review is neither filed nor sent", () => {
   const store = new Map();
   const end = runRecipients(store, reviewAnswer(["c-2"]));
-  for (const step of ["sender-file_recipients", "sender-send"]) {
+  // The delivery copy files the records and reads what the send mails; the send
+  // is the outreach's top-level publishing step (cinatra#3089).
+  for (const step of ["sender-file_recipients", "sender-resolve_send"]) {
     const ref = refReadBy("sender_flow", step, "confirmedRecipientsRef", end);
     assert.deepEqual(readList(store, ref), ["c-1", "c-3"], `${step} reads a recipient the operator removed`);
   }
+  const ref = refReadByTopLevel("send", "confirmedRecipientsRef", end);
+  assert.deepEqual(readList(store, ref), ["c-1", "c-3"], "the send reads a recipient the operator removed");
 });
 
 test("the campaign counts the recipients the review kept", () => {

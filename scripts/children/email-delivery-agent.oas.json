@@ -3,18 +3,11 @@
   "component_type": "Flow",
   "id": "email-delivery-flow",
   "name": "Email Delivery Agent",
-  "description": "Owner-controlled email delivery. Per the owner ruling 2026-07-22 (groganz) EVERY campaign send PAUSES at the send moment: a read-only prepare step summarizes the pending send from the real campaign data, a confirmation gate surfaces the recipient/draft summary to the operator, and the run proceeds to the actual send ONLY after the operator approves. The send itself is the unchanged single-ApiNode /api/llm-bridge path calling email_outreach_send_initial_start.",
+  "description": "Owner-controlled email delivery. Sending an email is an external write, so the application holds the send step until a person decides on its publish card: the card shows the rows the send step declares (the sending mailbox, the recipients, the emails and the call to action), and the run reaches the send only after the person chose to send. The flow draws no confirmation of its own, and none of its steps is a model step. A filing step files one recipient record per confirmed recipient, a read step resolves the approved draft bundle and the confirmed recipient list (the two references the send start reads) into the recipients and the email bodies the send mails, which are the values the card shows, and the send itself is a model-free call of email_outreach_send_initial_start on the passthrough road, whose arguments are the flow's values: the sender and the two references from the start, and the approved bodies the card showed from the read step. The run ends with one plain sentence on the send start's answer.",
   "metadata": {
     "cinatra": {
       "type": "flow",
-      "packageName": "@cinatra-ai/email-delivery-agent",
-      "hitlScreens": [
-        "@cinatra-ai/email-delivery-agent:send-confirmation"
-      ],
-      "llm": {
-        "preferredProvider": "openai",
-        "preferredModel": "gpt-5.5"
-      }
+      "packageName": "@cinatra-ai/email-delivery-agent"
     }
   },
   "inputs": [
@@ -31,7 +24,6 @@
     {
       "title": "senderEmail",
       "type": "string",
-      "default": "",
       "description": "Sender email address",
       "json_schema": {
         "format": "email"
@@ -54,16 +46,71 @@
       "json_schema": {
         "format": "uuid"
       }
+    },
+    {
+      "title": "emailBodies",
+      "type": "array",
+      "description": "The approved email bodies: the artifact revision of each draft's approved body. Each one names the contact of its draft (the draft's contactId, else its recipientId, each trimmed first, a blank one counting as absent), or, when none names a contact, they are one for each draft of the approved draft bundle, in draft order. The read step joins each one to its draft, compares it with the body of that draft and refuses a body it cannot join to exactly one draft; the publish card shows those of the drafts the send mails, and the send mails their text. At most 50 bodies, one for each draft of a bundle of at most 50 drafts.",
+      "json_schema": {
+        "type": "array",
+        "maxItems": 50,
+        "minItems": 1,
+        "items": {
+          "type": "object",
+          "properties": {
+            "artifactId": {
+              "type": "string"
+            },
+            "representationRevisionId": {
+              "type": "string"
+            },
+            "contactId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "artifactId",
+            "representationRevisionId"
+          ]
+        }
+      }
+    },
+    {
+      "title": "callToAction",
+      "type": "string",
+      "description": "The call to action of the emails. A run without it does not start. The read step hands it on to the publish card only when the text of every body the send mails carries it, and ends the run before the card otherwise."
     }
   ],
   "outputs": [
     {
-      "title": "sendResult",
-      "type": "object"
+      "title": "sendStatus",
+      "type": "string",
+      "default": "",
+      "description": "The status the send start answered: completed, or failed; the empty string when no send ran."
     },
     {
-      "title": "userResponse",
-      "type": "string"
+      "title": "sentCount",
+      "type": "integer",
+      "default": 0,
+      "description": "The number of campaign emails the send start reports as sent."
+    },
+    {
+      "title": "sendErrorMessage",
+      "type": "string",
+      "default": "",
+      "description": "What stopped a failed send; the empty string otherwise."
+    },
+    {
+      "title": "alreadySentCount",
+      "type": "integer",
+      "default": 0,
+      "description": "The number of messages an earlier call of the send start had already sent, which this call skipped; 0 when the answer carries none."
+    },
+    {
+      "title": "inDoubtCount",
+      "type": "integer",
+      "default": 0,
+      "description": "The number of messages whose send was started and never confirmed: the send start does not mail them again, and a person checks with the mail provider whether they went out; 0 when the answer carries none."
     }
   ],
   "start_node": {
@@ -74,13 +121,10 @@
       "$component_ref": "start"
     },
     {
-      "$component_ref": "prepare"
-    },
-    {
-      "$component_ref": "approval_gate"
-    },
-    {
       "$component_ref": "file_recipients"
+    },
+    {
+      "$component_ref": "resolve_send"
     },
     {
       "$component_ref": "send"
@@ -95,39 +139,29 @@
   "control_flow_connections": [
     {
       "component_type": "ControlFlowEdge",
-      "name": "start_to_prepare",
+      "name": "start_to_file_recipients",
       "from_node": {
         "$component_ref": "start"
       },
       "to_node": {
-        "$component_ref": "prepare"
-      }
-    },
-    {
-      "component_type": "ControlFlowEdge",
-      "name": "prepare_to_approval_gate",
-      "from_node": {
-        "$component_ref": "prepare"
-      },
-      "to_node": {
-        "$component_ref": "approval_gate"
-      }
-    },
-    {
-      "component_type": "ControlFlowEdge",
-      "name": "approval_gate_to_file_recipients",
-      "from_node": {
-        "$component_ref": "approval_gate"
-      },
-      "to_node": {
         "$component_ref": "file_recipients"
       }
     },
     {
       "component_type": "ControlFlowEdge",
-      "name": "file_recipients_to_send",
+      "name": "file_recipients_to_resolve_send",
       "from_node": {
         "$component_ref": "file_recipients"
+      },
+      "to_node": {
+        "$component_ref": "resolve_send"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "resolve_send_to_send",
+      "from_node": {
+        "$component_ref": "resolve_send"
       },
       "to_node": {
         "$component_ref": "send"
@@ -155,126 +189,6 @@
     }
   ],
   "data_flow_connections": [
-    {
-      "component_type": "DataFlowEdge",
-      "name": "start_campaignId_to_prepare",
-      "source_node": {
-        "$component_ref": "start"
-      },
-      "source_output": "campaignId",
-      "destination_node": {
-        "$component_ref": "prepare"
-      },
-      "destination_input": "campaignId"
-    },
-    {
-      "component_type": "DataFlowEdge",
-      "name": "start_approvedDraftBundleRef_to_prepare",
-      "source_node": {
-        "$component_ref": "start"
-      },
-      "source_output": "approvedDraftBundleRef",
-      "destination_node": {
-        "$component_ref": "prepare"
-      },
-      "destination_input": "approvedDraftBundleRef"
-    },
-    {
-      "component_type": "DataFlowEdge",
-      "name": "start_confirmedRecipientsRef_to_prepare",
-      "source_node": {
-        "$component_ref": "start"
-      },
-      "source_output": "confirmedRecipientsRef",
-      "destination_node": {
-        "$component_ref": "prepare"
-      },
-      "destination_input": "confirmedRecipientsRef"
-    },
-    {
-      "component_type": "DataFlowEdge",
-      "name": "start_agent_run_id_to_prepare",
-      "source_node": {
-        "$component_ref": "start"
-      },
-      "source_output": "agent_run_id",
-      "destination_node": {
-        "$component_ref": "prepare"
-      },
-      "destination_input": "agent_run_id"
-    },
-    {
-      "component_type": "DataFlowEdge",
-      "name": "start_campaignId_to_approval_gate",
-      "source_node": {
-        "$component_ref": "start"
-      },
-      "source_output": "campaignId",
-      "destination_node": {
-        "$component_ref": "approval_gate"
-      },
-      "destination_input": "campaignId"
-    },
-    {
-      "component_type": "DataFlowEdge",
-      "name": "start_senderEmail_to_approval_gate",
-      "source_node": {
-        "$component_ref": "start"
-      },
-      "source_output": "senderEmail",
-      "destination_node": {
-        "$component_ref": "approval_gate"
-      },
-      "destination_input": "senderEmail"
-    },
-    {
-      "component_type": "DataFlowEdge",
-      "name": "prepare_summary_to_approval_gate",
-      "source_node": {
-        "$component_ref": "prepare"
-      },
-      "source_output": "summary",
-      "destination_node": {
-        "$component_ref": "approval_gate"
-      },
-      "destination_input": "summary"
-    },
-    {
-      "component_type": "DataFlowEdge",
-      "name": "start_approvedDraftBundleRef_to_approval_gate",
-      "source_node": {
-        "$component_ref": "start"
-      },
-      "source_output": "approvedDraftBundleRef",
-      "destination_node": {
-        "$component_ref": "approval_gate"
-      },
-      "destination_input": "approvedDraftBundleRef"
-    },
-    {
-      "component_type": "DataFlowEdge",
-      "name": "start_confirmedRecipientsRef_to_approval_gate",
-      "source_node": {
-        "$component_ref": "start"
-      },
-      "source_output": "confirmedRecipientsRef",
-      "destination_node": {
-        "$component_ref": "approval_gate"
-      },
-      "destination_input": "confirmedRecipientsRef"
-    },
-    {
-      "component_type": "DataFlowEdge",
-      "name": "prepare_contentDigest_to_approval_gate",
-      "source_node": {
-        "$component_ref": "prepare"
-      },
-      "source_output": "contentDigest",
-      "destination_node": {
-        "$component_ref": "approval_gate"
-      },
-      "destination_input": "contentDigest"
-    },
     {
       "component_type": "DataFlowEdge",
       "name": "start_campaignId_to_send",
@@ -337,51 +251,39 @@
     },
     {
       "component_type": "DataFlowEdge",
-      "name": "prepare_contentDigest_to_send",
+      "name": "resolve_send_recipients_to_send",
       "source_node": {
-        "$component_ref": "prepare"
+        "$component_ref": "resolve_send"
       },
-      "source_output": "contentDigest",
+      "source_output": "recipients",
       "destination_node": {
         "$component_ref": "send"
       },
-      "destination_input": "contentDigest"
+      "destination_input": "recipients"
     },
     {
       "component_type": "DataFlowEdge",
-      "name": "send_sendResult_to_end",
+      "name": "resolve_send_emailBodies_to_send",
       "source_node": {
+        "$component_ref": "resolve_send"
+      },
+      "source_output": "emailBodies",
+      "destination_node": {
         "$component_ref": "send"
       },
-      "source_output": "sendResult",
-      "destination_node": {
-        "$component_ref": "end"
-      },
-      "destination_input": "sendResult"
+      "destination_input": "emailBodies"
     },
     {
       "component_type": "DataFlowEdge",
-      "name": "approval_gate_userResponse_to_end",
+      "name": "resolve_send_callToAction_to_send",
       "source_node": {
-        "$component_ref": "approval_gate"
+        "$component_ref": "resolve_send"
       },
-      "source_output": "userResponse",
+      "source_output": "callToAction",
       "destination_node": {
-        "$component_ref": "end"
-      },
-      "destination_input": "userResponse"
-    },
-    {
-      "component_type": "DataFlowEdge",
-      "name": "send_sendResult_to_delivery_summary",
-      "source_node": {
         "$component_ref": "send"
       },
-      "source_output": "sendResult",
-      "destination_node": {
-        "$component_ref": "delivery_summary"
-      },
-      "destination_input": "sendResult"
+      "destination_input": "callToAction"
     },
     {
       "component_type": "DataFlowEdge",
@@ -418,6 +320,186 @@
         "$component_ref": "file_recipients"
       },
       "destination_input": "campaignId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_agent_run_id_to_resolve_send",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "agent_run_id",
+      "destination_node": {
+        "$component_ref": "resolve_send"
+      },
+      "destination_input": "agent_run_id"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_confirmedRecipientsRef_to_resolve_send",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "confirmedRecipientsRef",
+      "destination_node": {
+        "$component_ref": "resolve_send"
+      },
+      "destination_input": "confirmedRecipientsRef"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_approvedDraftBundleRef_to_resolve_send",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "approvedDraftBundleRef",
+      "destination_node": {
+        "$component_ref": "resolve_send"
+      },
+      "destination_input": "approvedDraftBundleRef"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_emailBodies_to_resolve_send",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "emailBodies",
+      "destination_node": {
+        "$component_ref": "resolve_send"
+      },
+      "destination_input": "emailBodies"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "start_callToAction_to_resolve_send",
+      "source_node": {
+        "$component_ref": "start"
+      },
+      "source_output": "callToAction",
+      "destination_node": {
+        "$component_ref": "resolve_send"
+      },
+      "destination_input": "callToAction"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "send_status_to_delivery_summary",
+      "source_node": {
+        "$component_ref": "send"
+      },
+      "source_output": "status",
+      "destination_node": {
+        "$component_ref": "delivery_summary"
+      },
+      "destination_input": "status"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "send_sentCount_to_delivery_summary",
+      "source_node": {
+        "$component_ref": "send"
+      },
+      "source_output": "sentCount",
+      "destination_node": {
+        "$component_ref": "delivery_summary"
+      },
+      "destination_input": "sentCount"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "send_errorMessage_to_delivery_summary",
+      "source_node": {
+        "$component_ref": "send"
+      },
+      "source_output": "errorMessage",
+      "destination_node": {
+        "$component_ref": "delivery_summary"
+      },
+      "destination_input": "errorMessage"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "send_alreadySentCount_to_delivery_summary",
+      "source_node": {
+        "$component_ref": "send"
+      },
+      "source_output": "alreadySentCount",
+      "destination_node": {
+        "$component_ref": "delivery_summary"
+      },
+      "destination_input": "alreadySentCount"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "send_inDoubtCount_to_delivery_summary",
+      "source_node": {
+        "$component_ref": "send"
+      },
+      "source_output": "inDoubtCount",
+      "destination_node": {
+        "$component_ref": "delivery_summary"
+      },
+      "destination_input": "inDoubtCount"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "send_status_to_end_sendStatus",
+      "source_node": {
+        "$component_ref": "send"
+      },
+      "source_output": "status",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "sendStatus"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "send_sentCount_to_end",
+      "source_node": {
+        "$component_ref": "send"
+      },
+      "source_output": "sentCount",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "sentCount"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "send_errorMessage_to_end_sendErrorMessage",
+      "source_node": {
+        "$component_ref": "send"
+      },
+      "source_output": "errorMessage",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "sendErrorMessage"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "send_alreadySentCount_to_end",
+      "source_node": {
+        "$component_ref": "send"
+      },
+      "source_output": "alreadySentCount",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "alreadySentCount"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "send_inDoubtCount_to_end",
+      "source_node": {
+        "$component_ref": "send"
+      },
+      "source_output": "inDoubtCount",
+      "destination_node": {
+        "$component_ref": "end"
+      },
+      "destination_input": "inDoubtCount"
     }
   ],
   "$referenced_components": {
@@ -428,13 +510,15 @@
       "metadata": {
         "cinatra": {
           "required": [
-            "senderEmail"
+            "senderEmail",
+            "callToAction"
           ],
           "hidden": [
             "agent_run_id",
             "confirmedRecipientsRef",
             "approvedDraftBundleRef",
-            "campaignId"
+            "campaignId",
+            "emailBodies"
           ],
           "inputRenderers": {
             "senderEmail": "@cinatra-ai/email-outreach-agent:gmail-sender"
@@ -458,8 +542,7 @@
           "description": "Sender email address",
           "json_schema": {
             "format": "email"
-          },
-          "default": ""
+          }
         },
         {
           "title": "approvedDraftBundleRef",
@@ -477,86 +560,41 @@
           "json_schema": {
             "format": "uuid"
           }
-        }
-      ]
-    },
-    "prepare": {
-      "component_type": "ApiNode",
-      "id": "prepare",
-      "name": "Summarize the pending send",
-      "url": "{{CINATRA_BASE_URL}}/api/llm-bridge",
-      "http_method": "POST",
-      "data": {
-        "agent_id": "email-delivery-agent",
-        "max_steps": 8,
-        "system": "You are the email-delivery agent's PRE-SEND summarizer. You do NOT send anything. You MUST objects_get ALL THREE records: the approved draft bundle (approvedDraftBundleRef), the confirmed recipient set (confirmedRecipientsRef), and the campaign record (campaignId, to determine its scheduled send time). Then return a SINGLE JSON object with exactly two top-level keys, \"summary\" and \"contentDigest\". \"summary\": { \"recipientCount\": <integer number of confirmed recipients ACTUALLY loaded from confirmedRecipientsRef>, \"draftCount\": <integer number of approved drafts ACTUALLY in the loaded bundle>, \"scheduledAt\": <the campaign's scheduled send time as an ISO-8601 string when the campaign record shows it is scheduled for the future, otherwise the empty string \"\"> }. Count ONLY from the records you actually loaded — NEVER guess, estimate, or emit placeholder numbers. FAIL VISIBLE: if a ref cannot be read, set that count to 0; never leave a summary key out, because all three keys are required, and never substitute a guessed or placeholder number. After the three reads, call email_outreach_send_initial_preview exactly once, with exactly { \"approvedDraftBundleRef\": <the approvedDraftBundleRef input>, \"confirmedRecipientsRef\": <the confirmedRecipientsRef input> } and no other key. It is a read-only tool: it sends nothing and returns { draftCount, recipientCount, contentDigest }. \"contentDigest\": <the contentDigest string exactly as the tool returned it, character for character>. NEVER compute, shorten, re-encode or invent a digest. If the tool is not offered, fails or returns no contentDigest, set \"contentDigest\" to the empty string \"\". Use objects_get and email_outreach_send_initial_preview ONLY; do not call any send, save, update, or other write tool. This step exists so the operator can review the REAL recipient/draft counts at the confirmation gate before approving the send.",
-        "user": "Summarize the pending campaign send for operator confirmation. Do NOT send.\nInputs:\n- campaignId: {{ campaignId }}\n- approvedDraftBundleRef: {{ approvedDraftBundleRef }}\n- confirmedRecipientsRef: {{ confirmedRecipientsRef }}",
-        "agent_run_id": "{{ agent_run_id }}",
-        "cinatra_llm": {
-          "preferredProvider": "openai",
-          "preferredModel": "gpt-5.5"
-        }
-      },
-      "inputs": [
-        {
-          "title": "campaignId",
-          "type": "string"
         },
         {
-          "title": "approvedDraftBundleRef",
-          "type": "string"
-        },
-        {
-          "title": "confirmedRecipientsRef",
-          "type": "string"
-        },
-        {
-          "title": "agent_run_id",
-          "type": "string"
-        }
-      ],
-      "outputs": [
-        {
-          "title": "summary",
-          "type": "object",
-          "description": "The pre-send summary the confirmation gate surfaces. Every member is always present: the structured-output contract the runtime derives from this declaration carries no optional key, so an unreadable ref is reported as a count of 0 and an unscheduled campaign as the empty string.",
+          "title": "emailBodies",
+          "type": "array",
+          "description": "The approved email bodies: the artifact revision of each draft's approved body. Each one names the contact of its draft (the draft's contactId, else its recipientId, each trimmed first, a blank one counting as absent), or, when none names a contact, they are one for each draft of the approved draft bundle, in draft order. The read step joins each one to its draft, compares it with the body of that draft and refuses a body it cannot join to exactly one draft; the publish card shows those of the drafts the send mails, and the send mails their text. At most 50 bodies, one for each draft of a bundle of at most 50 drafts.",
           "json_schema": {
-            "type": "object",
-            "properties": {
-              "recipientCount": {
-                "type": "integer",
-                "description": "Confirmed recipients actually loaded from confirmedRecipientsRef."
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "properties": {
+                "artifactId": {
+                  "type": "string"
+                },
+                "representationRevisionId": {
+                  "type": "string"
+                },
+                "contactId": {
+                  "type": "string"
+                }
               },
-              "draftCount": {
-                "type": "integer",
-                "description": "Approved drafts actually loaded from approvedDraftBundleRef."
-              },
-              "scheduledAt": {
-                "type": "string",
-                "description": "The campaign's scheduled send time as an ISO-8601 string, or the empty string when it is not scheduled for the future."
-              }
-            },
-            "required": [
-              "recipientCount",
-              "draftCount",
-              "scheduledAt"
-            ]
+              "required": [
+                "artifactId",
+                "representationRevisionId"
+              ]
+            }
           }
         },
         {
-          "title": "contentDigest",
+          "title": "callToAction",
           "type": "string",
-          "description": "The content digest the read-only preview tool returned for the approved draft bundle and the confirmed recipients, handed on unchanged; the empty string when the preview returned none. The confirmation gate carries it and the send step passes it to the send start. This flow does not check the digest itself: refusing a send whose contents changed after the confirmation is left to the application's send start, which has to recompute the digest when the send starts and refuse a mismatch."
+          "description": "The call to action of the emails. A run without it does not start. The read step hands it on to the publish card only when the text of every body the send mails carries it, and ends the run before the card otherwise."
         }
-      ],
-      "metadata": {
-        "cinatra": {
-          "riskClass": "read_only",
-          "requiresApproval": false,
-          "packageName": "@cinatra-ai/email-delivery-agent",
-          "description": "Read-only pre-send summarizer. Reads all three records, approvedDraftBundleRef, confirmedRecipientsRef and the campaign record (campaignId), via the injected Cinatra self-MCP objects_get, calls the read-only email_outreach_send_initial_preview once, and returns { summary: { recipientCount, draftCount, scheduledAt }, contentDigest }: the counts computed only from the records it actually loaded (a count of 0 when a ref cannot be read), the digest exactly as the preview returned it (the empty string when it returned none). metadata.cinatra.toolboxes is INTENTIONALLY OMITTED so the default always-inject path reaches objects_get. This node performs NO write. Its summary is what the confirmation gate surfaces to the operator."
-        }
-      }
+      ]
     },
     "file_recipients": {
       "component_type": "ApiNode",
@@ -614,78 +652,33 @@
           "riskClass": "write",
           "requiresApproval": false,
           "packageName": "@cinatra-ai/email-delivery-agent",
-          "description": "The agent files one recipient record per confirmed recipient of this run, keyed by the run and the contact, with the address only where one exists, after the operator has confirmed the send and before any email is sent. A record that is refused ends the run before the send."
+          "description": "The agent files one recipient record per confirmed recipient of this run, keyed by the run and the contact, with the address only where one exists, before the send. The records are kept inside Cinatra, so this step makes no external write. A record that is refused ends the run before the send.",
+          "publishes": false
         }
       }
     },
-    "approval_gate": {
-      "component_type": "InputMessageNode",
-      "id": "approval_gate",
-      "name": "Confirm the send",
-      "metadata": {
-        "cinatra": {
-          "riskClass": "approval",
-          "requiresApproval": true,
-          "surfaceGateInputs": true,
-          "renderer": "@cinatra-ai/email-delivery-agent:send-confirmation",
-          "a2uiSurfaceId": "email-delivery:send-confirmation:input",
-          "autoSkipWhenInputsPresent": false,
-          "description": "Confirm the campaign and the mailbox it will be sent from. Nothing leaves before you confirm.",
-          "inputMessageSchema": {
-            "type": "object",
-            "x-renderer": "@cinatra-ai/email-delivery-agent:send-confirmation",
-            "properties": {
-              "campaignId": {
-                "type": "string",
-                "title": "Campaign",
-                "readOnly": true
-              },
-              "senderEmail": {
-                "type": "string",
-                "title": "Send from",
-                "format": "email",
-                "readOnly": true
-              },
-              "decision": {
-                "type": "string",
-                "title": "Decision",
-                "enum": [
-                  "approve",
-                  "revise",
-                  "reject"
-                ],
-                "description": "Approve the step, send it back for revision, or reject the run."
-              }
-            },
-            "required": [
-              "decision"
-            ]
+    "resolve_send": {
+      "component_type": "ApiNode",
+      "id": "resolve_send",
+      "name": "Read what the send mails",
+      "url": "{{CINATRA_BASE_URL}}/api/agents/passthrough",
+      "http_method": "POST",
+      "data": {
+        "tool": "extension_tool",
+        "input": {
+          "name": "send_contents",
+          "input": {
+            "recipientsRef": "{{ confirmedRecipientsRef }}",
+            "draftBundleRef": "{{ approvedDraftBundleRef }}",
+            "emailBodies": "{# pyagentspec-input-hint (do not remove): {{ emailBodies }} #}{{ emailBodies | tojson }}",
+            "callToAction": "{{ callToAction }}"
           }
-        }
+        },
+        "agent_run_id": "{{ agent_run_id }}"
       },
-      "outputs": [
-        {
-          "title": "userResponse",
-          "type": "string"
-        }
-      ],
       "inputs": [
         {
-          "title": "campaignId",
-          "type": "string",
-          "default": ""
-        },
-        {
-          "title": "senderEmail",
-          "type": "string",
-          "default": ""
-        },
-        {
-          "title": "summary",
-          "type": "object"
-        },
-        {
-          "title": "approvedDraftBundleRef",
+          "title": "agent_run_id",
           "type": "string",
           "default": ""
         },
@@ -695,28 +688,139 @@
           "default": ""
         },
         {
-          "title": "contentDigest",
+          "title": "approvedDraftBundleRef",
           "type": "string",
           "default": ""
+        },
+        {
+          "title": "emailBodies",
+          "type": "array",
+          "json_schema": {
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "properties": {
+                "artifactId": {
+                  "type": "string"
+                },
+                "representationRevisionId": {
+                  "type": "string"
+                },
+                "contactId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "artifactId",
+                "representationRevisionId"
+              ]
+            }
+          }
+        },
+        {
+          "title": "callToAction",
+          "type": "string"
         }
-      ]
+      ],
+      "outputs": [
+        {
+          "title": "recipients",
+          "type": "array",
+          "description": "One line per draft the send mails: the name, the address the send start addresses it to, the company and the subject of the draft. When the workspace's development-mode recipient override is on, the email pipeline mails the override address instead; this list does not show it.",
+          "json_schema": {
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "email": {
+                  "type": "string"
+                },
+                "company": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        {
+          "title": "emailBodies",
+          "type": "array",
+          "description": "The approved body of each draft the send mails, in draft order: its artifact revision, compared with the body of its draft, the contact of that draft, and the address and the subject of that draft as the Recipients list shows them. The publish card's Emails row shows it. It is the one list of exactly these five members that the send step surfaces: the send start reads it from the publish decision a person released, in this order, and compares each message's contact, address and subject with its entry exactly (the address with its outer white space removed, then byte for byte, the case included) and refuses the whole send on a difference.",
+          "json_schema": {
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "artifactId": {
+                  "type": "string"
+                },
+                "representationRevisionId": {
+                  "type": "string"
+                },
+                "contactId": {
+                  "type": "string"
+                },
+                "recipientEmail": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "artifactId",
+                "representationRevisionId",
+                "contactId",
+                "recipientEmail",
+                "subject"
+              ]
+            }
+          }
+        },
+        {
+          "title": "callToAction",
+          "type": "string",
+          "description": "The call to action the run names, trimmed, handed on only when the text of every body the send mails carries it. The publish card's Call to action row shows it."
+        }
+      ],
+      "metadata": {
+        "cinatra": {
+          "riskClass": "read_only",
+          "requiresApproval": false,
+          "packageName": "@cinatra-ai/email-delivery-agent",
+          "publishes": false,
+          "description": "The agent reads the approved draft bundle and the confirmed recipient list, the same two references the send step passes to the send start, and resolves them into what the send mails: the recipients (the address of each draft as the send chooses it) and the approved bodies (the body revision the run hands in for each mailed draft, joined to that draft by its contact or, when the bodies name no contact, by its position in the bundle, compared with the body of that draft, with the draft's contact and the address and subject of that draft, the same ones the Recipients line of that draft shows). The send step takes the recipients and the bodies from this step only, so the publish card, and the decision a person releases there, hold what the send mails. It also hands on the call to action the card's Call to action row shows, and only one that the text of every mailed body carries, so the card never shows a call to action the send does not mail. A body that cannot be joined to exactly one draft or is not the body of its draft, a mailed draft without a body, a contact or a subject (SUBJECT_MISSING), one contact or one artifact named twice, more than 50 bodies, drafts or confirmed recipients (TOO_MANY_BODIES, TOO_MANY_DRAFTS, TOO_MANY_RECIPIENTS, counted before anything is read), a bundle with nothing to mail, a run without a call to action (CALL_TO_ACTION_MISSING) or a mailed body without it (CALL_TO_ACTION_NOT_IN_EMAIL) ends the run before the card. This step reads the body of each mailed draft and no other body, and writes nothing."
+        }
+      }
     },
     "send": {
       "component_type": "ApiNode",
       "id": "send",
       "name": "Send campaign emails",
-      "url": "{{CINATRA_BASE_URL}}/api/llm-bridge",
+      "url": "{{CINATRA_BASE_URL}}/api/agents/passthrough",
       "http_method": "POST",
       "data": {
-        "agent_id": "email-delivery",
-        "max_steps": 10,
-        "system": "You are the email-delivery agent. The operator has EXPLICITLY CONFIRMED this send at the send-confirmation approval gate — they reviewed the recipient/draft summary and approved, so you are now on the post-approval path. Your sole responsibility is to EXECUTE the approved send: call email_outreach_send_initial_start, then poll email_outreach_send_initial_status with the campaignId to completion, and return sendResult. Do NOT re-prompt for confirmation — that already happened at the gate — and do NOT re-validate drafts/recipients/sender (that happened upstream). Follow the instructions below step-by-step. All sends route through sendEmailThroughSystem, which applies dev-mode redirect at the bridge layer.\n\nYou are the **email-delivery** agent, running on the POST-APPROVAL path. Per the\nowner ruling 2026-07-22 (groganz), every campaign send PAUSES at a\nsend-confirmation gate BEFORE this step: a read-only prepare step computes the\nrecipient/draft summary from the real campaign data, the gate surfaces that\nsummary to the operator, and the run only reaches you AFTER the operator\napproves. By the time these instructions run, the upstream orchestrator\n(typically `@cinatra-ai/email-outreach-agent`) has ALREADY:\n\n1. Selected the sender email.\n2. Approved the drafts bundle.\n3. Confirmed the recipient list.\n\n…and the operator has EXPLICITLY CONFIRMED this send at the send-confirmation\ngate. Your sole responsibility is to EXECUTE the approved send and return\n`sendResult`. Do NOT re-prompt for confirmation — that already happened at the\ngate — and do NOT re-validate drafts/recipients/sender (that happened\nupstream).\n\n## STEP 1 — Resolve context\n\n- `objects_get({ objectId: approvedDraftBundleRef })` → `drafts[]` (each draft\n  has `subject`, `bodyHtml`, `recipientPersonaId` or similar fields per the\n  email-outreach domain model).\n- `objects_get({ objectId: confirmedRecipientsRef })` → `recipients[]` (each\n  recipient has `email`, `firstName`, etc.).\n\nIf either fetch fails, return immediately with:\n\n```json\n{ \"sendResult\": { \"status\": \"failed\", \"errorCode\": \"OBJECTS_FETCH_FAILED\", \"errorMessage\": \"<details>\" } }\n```\n\n## STEP 2 — Send via `email_outreach_send_initial_start`\n\nCall exactly once, with exactly these five arguments and no other key:\n\n```json\n{\n  \"campaignId\": \"<campaignId input>\",\n  \"senderEmail\": \"<senderEmail input>\",\n  \"approvedDraftBundleRef\": \"<approvedDraftBundleRef input>\",\n  \"confirmedRecipientsRef\": \"<confirmedRecipientsRef input>\",\n  \"contentDigest\": \"<contentDigest input>\"\n}\n```\n\nPass every value exactly as the input gives it, character for character.\nThese are the values the operator confirmed at the gate: the complete argument\nobject is compared with the confirmed one, and the send is refused when a key\nis missing, added or changed. Always pass all five keys. When an input is\nempty, pass JSON null for that key, because the gate carries an empty value\nas null; never leave a key out, never add a key, and never fill in a value of\nyour own.\n\nThe use case iterates `recipients[] × drafts[]` and routes every\n`sendGmailMessage` through `sendEmailThroughSystem` (the dev-mode redirect\nchokepoint). The handler returns an `operationId` that identifies the async\nwork.\n\n## STEP 3 — Poll for completion\n\nCall `email_outreach_send_initial_status` with `{ campaignId }` until\n`status === \"completed\"` or `status === \"failed\"`.\n\nCap retries to FIVE iterations max (the bridge enforces `max_steps: 10`\non this ApiNode — exceeding it returns control to WayFlow with no terminal\nstatus, which is treated as failure). If the status never terminates within\nfive polls, return `sendResult.status: \"failed\"` with\n`errorCode: \"POLL_BUDGET_EXHAUSTED\"`.\n\n## STEP 4 — Return sendResult\n\nReturn ONLY this JSON object — no prose, no Markdown wrapping:\n\n```json\n{\n  \"sendResult\": {\n    \"status\": \"completed\" | \"failed\",\n    \"totalSent\": <number>,\n    \"totalFailed\": <number>,\n    \"operationId\": \"<uuid>\",\n    \"errorCode\": \"<optional, only when status='failed'>\",\n    \"errorMessage\": \"<optional, only when status='failed'>\",\n    \"summary\": \"<one plain sentence: how many messages went out and, on a failure, what stopped the send>\"\n  }\n}\n```\n\n## Known limitations\n\n- **The underlying send use case is currently stubbed.** Both\n  `email_outreach_send_initial_start` and `email_outreach_send_initial_status`\n  throw `not implemented` in `src/lib/trigger-email-send-use-cases.ts`. As a\n  result this agent MOUNTS in WayFlow but does NOT actually deliver email\n  end-to-end. Until those use cases land, `agent_run` against this agent will\n  fail at STEP 2 with a propagated \"not implemented\" error — that failure is\n  correct constrained behavior.\n- The agent does not use `FlowNode` or `TriggerWaitNode`. `FlowNode` requires a\n  `subflow` field, and `TriggerWaitNode` is not yet a real pyagentspec\n  component. This constrained shape removes both so the WayFlow `/.health`\n  endpoint goes green.\n\n## Architecture context\n\n- **Constrained send shape:** sender HITL, trigger subflow, and\n  `TriggerWaitNode` are intentionally absent from this version of the agent.\n  `FlowNode` requires a `subflow` field, and `TriggerWaitNode` is not yet a\n  real pyagentspec component; using either would prevent the agent from\n  mounting. Trigger/wait machinery should return only after the underlying\n  primitives exist.\n- **dev-mode redirect:** `sendEmailThroughSystem` (in `src/lib/email-system.ts`)\n  is the single chokepoint that applies the dev-mode `forwardingDestination`\n  override. All sends from this agent route through it so direct\n  `sendGmailMessage` imports cannot bypass the redirect.\n- **No follow-ups:** this agent handles initial sends only.\n\n## How inputs arrive\n\nThis agent is normally invoked via `agent_run` from\n`@cinatra-ai/email-outreach-agent`, which provides all four inputs:\n`campaignId`, `approvedDraftBundleRef`, `confirmedRecipientsRef`,\n`senderEmail`. The `agent_run_id` input is automatically supplied by the\nruntime — leave its default `\"\"` in place.\n\nIt can also be invoked standalone via `agent_run` for testing — the operator\nsupplies the four required inputs directly through the run form.",
-        "user": "The operator approved the send at the confirmation gate. Execute the campaign send now.\nInputs:\n- campaignId: {{ campaignId }}\n- approvedDraftBundleRef: {{ approvedDraftBundleRef }}\n- confirmedRecipientsRef: {{ confirmedRecipientsRef }}\n- senderEmail: {{ senderEmail }}\n- contentDigest: {{ contentDigest }}",
-        "agent_run_id": "{{ agent_run_id }}",
-        "cinatra_llm": {
-          "preferredProvider": "openai",
-          "preferredModel": "gpt-5.5"
-        }
+        "tool": "email_outreach_send_initial_start",
+        "input": {
+          "campaignId": "{# pyagentspec-input-hint (do not remove): {{ emailBodies }} {{ recipients }} {{ callToAction }} #}{{ campaignId }}",
+          "senderEmail": "{{ senderEmail }}",
+          "approvedDraftBundleRef": "{{ approvedDraftBundleRef }}",
+          "confirmedRecipientsRef": "{{ confirmedRecipientsRef }}"
+        },
+        "agent_run_id": "{{ agent_run_id }}"
       },
       "inputs": [
         {
@@ -742,97 +846,173 @@
         },
         {
           "title": "senderEmail",
-          "type": "string",
-          "default": ""
-        },
-        {
-          "title": "contentDigest",
-          "type": "string",
-          "default": ""
+          "type": "string"
         },
         {
           "title": "agent_run_id",
           "type": "string",
           "default": ""
+        },
+        {
+          "title": "recipients",
+          "type": "array",
+          "description": "The recipients the send mails, as the read step resolved them from the approved draft bundle and the confirmed recipient list: one line per mailed draft with its name, email, company and the subject of its email. These are the addresses the send start addresses; when the workspace's development-mode recipient override is on, the email pipeline mails the override address instead, which the card's Recipients row does not show",
+          "json_schema": {
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "email": {
+                  "type": "string"
+                },
+                "company": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        {
+          "title": "emailBodies",
+          "type": "array",
+          "description": "The approved email bodies the send mails, as the read step joined them to the approved drafts: per mailed draft one artifact revision, the contact of its draft, and the address and the subject the card's Recipients row shows for that draft. The publish card's Emails row shows this list, and it is the one input of this step that has these five members and no other: the send start reads it from the publish decision a person released, in this order, and refuses the whole send before any mail when a message's contact, address or subject differs from its entry; the address is compared byte for byte after its outer white space is removed, so another case is another address",
+          "json_schema": {
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "artifactId": {
+                  "type": "string"
+                },
+                "representationRevisionId": {
+                  "type": "string"
+                },
+                "contactId": {
+                  "type": "string"
+                },
+                "recipientEmail": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "artifactId",
+                "representationRevisionId",
+                "contactId",
+                "recipientEmail",
+                "subject"
+              ]
+            }
+          }
+        },
+        {
+          "title": "callToAction",
+          "type": "string",
+          "description": "The call to action of the emails, as the read step handed it on after it found it in the text of every body the send mails; the publish card shows it"
         }
       ],
       "outputs": [
         {
-          "title": "sendResult",
-          "type": "object",
-          "description": "The terminal result of the approved send. Every member is always present: the structured-output contract the runtime derives from this declaration carries no optional key, so errorCode and errorMessage are the empty string when status is completed.",
-          "json_schema": {
-            "type": "object",
-            "properties": {
-              "status": {
-                "type": "string",
-                "enum": [
-                  "completed",
-                  "failed"
-                ],
-                "description": "The terminal status polled from email_outreach_send_initial_status."
-              },
-              "totalSent": {
-                "type": "integer",
-                "description": "Messages the send operation reported as sent."
-              },
-              "totalFailed": {
-                "type": "integer",
-                "description": "Messages the send operation reported as failed."
-              },
-              "operationId": {
-                "type": "string",
-                "description": "The operation identifier email_outreach_send_initial_start returned, or the empty string when the send never started."
-              },
-              "errorCode": {
-                "type": "string",
-                "description": "The failure code when status is failed, otherwise the empty string."
-              },
-              "errorMessage": {
-                "type": "string",
-                "description": "The failure detail when status is failed, otherwise the empty string."
-              },
-              "summary": {
-                "type": "string",
-                "description": "One plain sentence for the person who confirmed the send: how many messages went out and, when the send failed, what stopped it."
-              }
-            },
-            "required": [
-              "status",
-              "totalSent",
-              "totalFailed",
-              "operationId",
-              "errorCode",
-              "errorMessage",
-              "summary"
-            ]
-          }
+          "title": "status",
+          "type": "string",
+          "default": "",
+          "description": "The status the send start answered: completed, or failed when the send stopped; the empty string when the answer carried none."
+        },
+        {
+          "title": "sentCount",
+          "type": "integer",
+          "default": 0,
+          "description": "The number of messages the send start reports as sent."
+        },
+        {
+          "title": "operationId",
+          "type": "string",
+          "default": "",
+          "description": "The operation identifier the send start answered."
+        },
+        {
+          "title": "errorMessage",
+          "type": "string",
+          "default": "",
+          "description": "What stopped a failed send, as the send start answered it; the empty string for a completed send."
+        },
+        {
+          "title": "alreadySentCount",
+          "type": "integer",
+          "default": 0,
+          "description": "The number of messages an earlier call of the send start had already sent, which this call skipped; 0 when the answer carries none."
+        },
+        {
+          "title": "inDoubtCount",
+          "type": "integer",
+          "default": 0,
+          "description": "The number of messages whose send was started and never confirmed: the send start does not mail them again, and a person checks with the mail provider whether they went out; 0 when the answer carries none."
         }
       ],
       "metadata": {
         "cinatra": {
           "riskClass": "email_send",
           "requiresApproval": false,
+          "publishes": true,
+          "publishRows": [
+            {
+              "label": "From",
+              "input": "senderEmail"
+            },
+            {
+              "kind": "list",
+              "label": "Recipients",
+              "input": "recipients",
+              "columns": [
+                {
+                  "label": "Name",
+                  "field": "name"
+                },
+                {
+                  "label": "Email",
+                  "field": "email"
+                },
+                {
+                  "label": "Company",
+                  "field": "company"
+                },
+                {
+                  "label": "Subject",
+                  "field": "subject"
+                }
+              ]
+            },
+            {
+              "kind": "artifacts",
+              "label": "Emails",
+              "input": "emailBodies"
+            },
+            {
+              "label": "Call to action",
+              "input": "callToAction"
+            }
+          ],
           "packageName": "@cinatra-ai/email-delivery-agent",
           "renderer": "@cinatra-ai/email-delivery-agent:output",
           "a2uiSurfaceId": "email-delivery:step-1:output",
-          "description": "Single ApiNode → /api/llm-bridge. Runs ONLY after the confirmation_gate approval. The LLM reads approvedDraftBundleRef + confirmedRecipientsRef via objects_get and calls email_outreach_send_initial_start (the #1946 send primitive, unchanged). metadata.cinatra.toolboxes is INTENTIONALLY OMITTED so the default always-inject path runs — the LLM reaches objects_get and email_outreach_send_initial_start via the injected Cinatra self-MCP. requiresApproval is false HERE because the human approval is enforced structurally by the upstream confirmation_gate, not by re-gating the send.",
-          "tools": [
-            "email_outreach_send_initial_start",
-            "email_outreach_send_initial_status",
-            "objects_get"
-          ],
+          "description": "The flow's one publishing step and a model-free call of email_outreach_send_initial_start on the deterministic passthrough road (/api/agents/passthrough). Sending an email is an external write, so the application stops the run in front of this step and shows its publish card with the four rows declared here (From, Recipients, Emails, Call to action); the run reaches the step only after the person chose to send. Every argument of the call is a template over one of this step's inputs, and every input comes by a data edge from the start node or from the read step in front of this step: the campaign, the sender and the two references from the start node. The step's other inputs, the recipients, the emails and the call to action, come from the read step and are not arguments: the application surfaces every input of the step in the publish decision, and the send start reads from it the one list of approved emails (emailBodies, the list the Emails row shows) with the campaign. No model writes an argument or a list, so the send start mails the approved body revisions the person saw, from the mailbox the card showed, to the addresses and with the subjects the card showed (each approved body names the address and the subject of its draft), and refuses the whole send before any mail when one of them does not fit its draft or a message would go to another address or with another subject. The passthrough road serves the send start only to a listed publishing step of the run's flow whose publish decision is released, once; a host whose road does not serve it answers the call with an error, the run ends and nothing is sent. The step returns the send start's answer: its status (completed or failed), the number of messages sent by this call, the operation id and, for a failed send, the reason, and the number of messages an earlier call had already sent (skipped now) and the number in doubt (started and never confirmed, not sent again; a person checks with the mail provider). requiresApproval is false because the publish card is the one approval in front of the send.",
           "confirmations": [
             {
               "tool": "email_outreach_send_initial_start",
-              "gateRenderer": "@cinatra-ai/email-delivery-agent:send-confirmation",
-              "arguments": {
-                "campaignId": "/gate/campaignId",
-                "senderEmail": "/gate/senderEmail",
-                "approvedDraftBundleRef": "/gate/approvedDraftBundleRef",
-                "confirmedRecipientsRef": "/gate/confirmedRecipientsRef",
-                "contentDigest": "/gate/contentDigest"
-              }
+              "decision": "publish"
             }
           ]
         }
@@ -844,12 +1024,32 @@
       "name": "Delivery result",
       "inputs": [
         {
-          "title": "sendResult",
-          "type": "object",
-          "default": {}
+          "title": "status",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "sentCount",
+          "type": "integer",
+          "default": 0
+        },
+        {
+          "title": "errorMessage",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "alreadySentCount",
+          "type": "integer",
+          "default": 0
+        },
+        {
+          "title": "inDoubtCount",
+          "type": "integer",
+          "default": 0
         }
       ],
-      "message": "{# pyagentspec-input-hint (do not remove): {{ sendResult }} #}{% if not sendResult or not sendResult.status %}No campaign email was sent in this run.{% elif sendResult.status == 'completed' %}{% if sendResult.totalSent == 1 %}1 campaign email was sent{% elif sendResult.totalSent %}{{ sendResult.totalSent }} campaign emails were sent{% else %}The send finished, but no campaign email went out{% endif %}{% if sendResult.totalFailed %}, and {{ sendResult.totalFailed }} could not be sent{% endif %}.{% elif sendResult.errorCode == 'OBJECTS_FETCH_FAILED' %}No campaign email was sent: the approved drafts or the confirmed recipients could not be read.{% elif sendResult.errorCode == 'POLL_BUDGET_EXHAUSTED' %}The send did not report its end in time, so it is not known how many campaign emails went out; check the campaign before you send again.{% elif sendResult.errorMessage %}The campaign emails could not be sent: {{ sendResult.errorMessage }}{% else %}The campaign emails could not be sent, and the send gave no reason.{% endif %}",
+      "message": "{# pyagentspec-input-hint (do not remove): {{ status }} {{ sentCount }} {{ errorMessage }} {{ alreadySentCount }} {{ inDoubtCount }} #}{% if status == 'completed' %}{% if sentCount == 1 %}1 campaign email was sent.{% elif sentCount %}{{ sentCount }} campaign emails were sent.{% else %}The send finished, but no campaign email went out.{% endif %}{% else %}{% if status == 'failed' %}{% if errorMessage %}The send stopped: {{ errorMessage }}{% else %}The send stopped, and it gave no reason.{% endif %}{% elif sentCount or inDoubtCount %}The send did not report a result.{% else %}No campaign email was sent in this run.{% endif %}{% if status == 'failed' or sentCount or inDoubtCount %}\n\n{% if sentCount == 1 %}1 email went out in this run, and repeating the send will not send it again.{% elif sentCount %}{{ sentCount }} emails went out in this run, and repeating the send will not send them again.{% elif inDoubtCount %}No email is confirmed as sent in this run.{% else %}No email was sent in this run.{% endif %}{% endif %}{% endif %}{% if alreadySentCount == 1 %} 1 email had already been sent before this send, and was skipped.{% elif alreadySentCount %} {{ alreadySentCount }} emails had already been sent before this send, and were skipped.{% endif %}{% if inDoubtCount == 1 %} 1 email may or may not have gone out: check with your mail provider before sending again. This send does not send it again.{% elif inDoubtCount %} {{ inDoubtCount }} emails may or may not have gone out: check with your mail provider before sending again. This send does not send them again.{% endif %}",
       "metadata": {
         "cinatra": {
           "purpose": "plain-language-delivery-ending"
@@ -862,14 +1062,29 @@
       "name": "End",
       "outputs": [
         {
-          "title": "sendResult",
-          "type": "object",
-          "default": {}
-        },
-        {
-          "title": "userResponse",
+          "title": "sendStatus",
           "type": "string",
           "default": ""
+        },
+        {
+          "title": "sentCount",
+          "type": "integer",
+          "default": 0
+        },
+        {
+          "title": "sendErrorMessage",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "alreadySentCount",
+          "type": "integer",
+          "default": 0
+        },
+        {
+          "title": "inDoubtCount",
+          "type": "integer",
+          "default": 0
         }
       ]
     }

@@ -1,0 +1,694 @@
+{
+  "agentspec_version": "26.1.0",
+  "component_type": "Flow",
+  "id": "email-delivery-subflow",
+  "name": "Email Delivery Agent",
+  "inputs": [
+    {
+      "title": "agent_run_id",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "title": "confirmedRecipientsRef",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "title": "approvedDraftBundleRef",
+      "type": "string",
+      "default": "",
+      "description": "Approved draft bundle reference (UUID)",
+      "json_schema": {
+        "format": "uuid"
+      }
+    },
+    {
+      "title": "campaignId",
+      "type": "string",
+      "default": "",
+      "description": "Campaign the send belongs to",
+      "json_schema": {
+        "format": "uuid"
+      }
+    },
+    {
+      "title": "emailBodies",
+      "type": "array",
+      "description": "The approved email bodies: the artifact revision of each draft's approved body. Each one names the contact of its draft (the draft's contactId, else its recipientId, each trimmed first, a blank one counting as absent), or, when none names a contact, they are one for each draft of the approved draft bundle, in draft order. The read step joins each one to its draft, compares it with the body of that draft and refuses a body it cannot join to exactly one draft; the publish card shows those of the drafts the send mails, and the send mails their text. At most 50 bodies, one for each draft of a bundle of at most 50 drafts.",
+      "json_schema": {
+        "type": "array",
+        "maxItems": 50,
+        "minItems": 1,
+        "items": {
+          "type": "object",
+          "properties": {
+            "artifactId": {
+              "type": "string"
+            },
+            "representationRevisionId": {
+              "type": "string"
+            },
+            "contactId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "artifactId",
+            "representationRevisionId"
+          ]
+        }
+      }
+    },
+    {
+      "title": "callToAction",
+      "type": "string",
+      "description": "The call to action of the emails. A run without it does not start. The read step hands it on to the publish card only when the text of every body the send mails carries it, and ends the run before the card otherwise."
+    }
+  ],
+  "outputs": [
+    {
+      "title": "recipients",
+      "type": "array",
+      "description": "One line per draft the send mails: the name, the address the send start addresses it to, the company and the subject of the draft. When the workspace's development-mode recipient override is on, the email pipeline mails the override address instead; this list does not show it.",
+      "json_schema": {
+        "type": "array",
+        "maxItems": 50,
+        "minItems": 1,
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "email": {
+              "type": "string"
+            },
+            "company": {
+              "type": "string"
+            },
+            "subject": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "title": "emailBodies",
+      "type": "array",
+      "description": "The approved body of each draft the send mails, in draft order: its artifact revision, compared with the body of its draft, the contact of that draft, and the address and the subject of that draft as the Recipients list shows them. The publish card's Emails row shows it. It is the one list of exactly these five members that the send step surfaces: the send start reads it from the publish decision a person released, in this order, and compares each message's contact, address and subject with its entry exactly (the address with its outer white space removed, then byte for byte, the case included) and refuses the whole send on a difference.",
+      "json_schema": {
+        "type": "array",
+        "maxItems": 50,
+        "minItems": 1,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "artifactId": {
+              "type": "string"
+            },
+            "representationRevisionId": {
+              "type": "string"
+            },
+            "contactId": {
+              "type": "string"
+            },
+            "recipientEmail": {
+              "type": "string"
+            },
+            "subject": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "artifactId",
+            "representationRevisionId",
+            "contactId",
+            "recipientEmail",
+            "subject"
+          ]
+        }
+      }
+    },
+    {
+      "title": "callToAction",
+      "type": "string",
+      "description": "The call to action the run names, trimmed, handed on only when the text of every body the send mails carries it. The publish card's Call to action row shows it."
+    }
+  ],
+  "start_node": {
+    "$component_ref": "sender-start"
+  },
+  "nodes": [
+    {
+      "$component_ref": "sender-start"
+    },
+    {
+      "$component_ref": "sender-file_recipients"
+    },
+    {
+      "$component_ref": "sender-resolve_send"
+    },
+    {
+      "$component_ref": "sender-end"
+    }
+  ],
+  "control_flow_connections": [
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "sender-start_to_file_recipients",
+      "from_node": {
+        "$component_ref": "sender-start"
+      },
+      "to_node": {
+        "$component_ref": "sender-file_recipients"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "sender-file_recipients_to_resolve_send",
+      "from_node": {
+        "$component_ref": "sender-file_recipients"
+      },
+      "to_node": {
+        "$component_ref": "sender-resolve_send"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "sender-resolve_send_to_end",
+      "from_node": {
+        "$component_ref": "sender-resolve_send"
+      },
+      "to_node": {
+        "$component_ref": "sender-end"
+      }
+    }
+  ],
+  "data_flow_connections": [
+    {
+      "component_type": "DataFlowEdge",
+      "name": "sender-start_agent_run_id_to_file_recipients",
+      "source_node": {
+        "$component_ref": "sender-start"
+      },
+      "source_output": "agent_run_id",
+      "destination_node": {
+        "$component_ref": "sender-file_recipients"
+      },
+      "destination_input": "agent_run_id"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "sender-start_confirmedRecipientsRef_to_file_recipients",
+      "source_node": {
+        "$component_ref": "sender-start"
+      },
+      "source_output": "confirmedRecipientsRef",
+      "destination_node": {
+        "$component_ref": "sender-file_recipients"
+      },
+      "destination_input": "confirmedRecipientsRef"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "sender-start_campaignId_to_file_recipients",
+      "source_node": {
+        "$component_ref": "sender-start"
+      },
+      "source_output": "campaignId",
+      "destination_node": {
+        "$component_ref": "sender-file_recipients"
+      },
+      "destination_input": "campaignId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "sender-start_agent_run_id_to_resolve_send",
+      "source_node": {
+        "$component_ref": "sender-start"
+      },
+      "source_output": "agent_run_id",
+      "destination_node": {
+        "$component_ref": "sender-resolve_send"
+      },
+      "destination_input": "agent_run_id"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "sender-start_confirmedRecipientsRef_to_resolve_send",
+      "source_node": {
+        "$component_ref": "sender-start"
+      },
+      "source_output": "confirmedRecipientsRef",
+      "destination_node": {
+        "$component_ref": "sender-resolve_send"
+      },
+      "destination_input": "confirmedRecipientsRef"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "sender-start_approvedDraftBundleRef_to_resolve_send",
+      "source_node": {
+        "$component_ref": "sender-start"
+      },
+      "source_output": "approvedDraftBundleRef",
+      "destination_node": {
+        "$component_ref": "sender-resolve_send"
+      },
+      "destination_input": "approvedDraftBundleRef"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "sender-start_emailBodies_to_resolve_send",
+      "source_node": {
+        "$component_ref": "sender-start"
+      },
+      "source_output": "emailBodies",
+      "destination_node": {
+        "$component_ref": "sender-resolve_send"
+      },
+      "destination_input": "emailBodies"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "sender-start_callToAction_to_resolve_send",
+      "source_node": {
+        "$component_ref": "sender-start"
+      },
+      "source_output": "callToAction",
+      "destination_node": {
+        "$component_ref": "sender-resolve_send"
+      },
+      "destination_input": "callToAction"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "sender-resolve_send_to_end_recipients",
+      "source_node": {
+        "$component_ref": "sender-resolve_send"
+      },
+      "source_output": "recipients",
+      "destination_node": {
+        "$component_ref": "sender-end"
+      },
+      "destination_input": "recipients"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "sender-resolve_send_to_end_emailBodies",
+      "source_node": {
+        "$component_ref": "sender-resolve_send"
+      },
+      "source_output": "emailBodies",
+      "destination_node": {
+        "$component_ref": "sender-end"
+      },
+      "destination_input": "emailBodies"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "sender-resolve_send_to_end_callToAction",
+      "source_node": {
+        "$component_ref": "sender-resolve_send"
+      },
+      "source_output": "callToAction",
+      "destination_node": {
+        "$component_ref": "sender-end"
+      },
+      "destination_input": "callToAction"
+    }
+  ],
+  "$referenced_components": {
+    "sender-start": {
+      "component_type": "StartNode",
+      "id": "sender-start",
+      "name": "Inputs",
+      "metadata": {
+        "cinatra": {
+          "required": [
+            "callToAction"
+          ],
+          "hidden": [
+            "agent_run_id",
+            "confirmedRecipientsRef",
+            "approvedDraftBundleRef",
+            "campaignId",
+            "emailBodies"
+          ]
+        }
+      },
+      "inputs": [
+        {
+          "title": "agent_run_id",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "confirmedRecipientsRef",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "approvedDraftBundleRef",
+          "type": "string",
+          "default": "",
+          "description": "Approved draft bundle reference (UUID)",
+          "json_schema": {
+            "format": "uuid"
+          }
+        },
+        {
+          "title": "campaignId",
+          "type": "string",
+          "default": "",
+          "json_schema": {
+            "format": "uuid"
+          }
+        },
+        {
+          "title": "emailBodies",
+          "type": "array",
+          "description": "The approved email bodies: the artifact revision of each draft's approved body. Each one names the contact of its draft (the draft's contactId, else its recipientId, each trimmed first, a blank one counting as absent), or, when none names a contact, they are one for each draft of the approved draft bundle, in draft order. The read step joins each one to its draft, compares it with the body of that draft and refuses a body it cannot join to exactly one draft; the publish card shows those of the drafts the send mails, and the send mails their text. At most 50 bodies, one for each draft of a bundle of at most 50 drafts.",
+          "json_schema": {
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "properties": {
+                "artifactId": {
+                  "type": "string"
+                },
+                "representationRevisionId": {
+                  "type": "string"
+                },
+                "contactId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "artifactId",
+                "representationRevisionId"
+              ]
+            }
+          }
+        },
+        {
+          "title": "callToAction",
+          "type": "string",
+          "description": "The call to action of the emails. A run without it does not start. The read step hands it on to the publish card only when the text of every body the send mails carries it, and ends the run before the card otherwise."
+        }
+      ]
+    },
+    "sender-file_recipients": {
+      "component_type": "ApiNode",
+      "id": "sender-file_recipients",
+      "name": "File one record per confirmed recipient",
+      "url": "{{CINATRA_BASE_URL}}/api/agents/passthrough",
+      "http_method": "POST",
+      "data": {
+        "tool": "extension_tool",
+        "input": {
+          "name": "recipient_records",
+          "input": {
+            "recipientsRef": "{{ confirmedRecipientsRef }}",
+            "campaignId": "{{ campaignId }}"
+          }
+        },
+        "agent_run_id": "{{ agent_run_id }}"
+      },
+      "inputs": [
+        {
+          "title": "agent_run_id",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "confirmedRecipientsRef",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "campaignId",
+          "type": "string",
+          "default": ""
+        }
+      ],
+      "outputs": [
+        {
+          "title": "filed",
+          "type": "integer",
+          "default": 0
+        },
+        {
+          "title": "skipped",
+          "type": "integer",
+          "default": 0
+        },
+        {
+          "title": "ok",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "metadata": {
+        "cinatra": {
+          "riskClass": "write",
+          "requiresApproval": false,
+          "packageName": "@cinatra-ai/email-delivery-agent",
+          "description": "The agent files one recipient record per confirmed recipient of this run, keyed by the run and the contact, with the address only where one exists, before the send. The records are kept inside Cinatra, so this step makes no external write. A record that is refused ends the run before the send.",
+          "publishes": false
+        }
+      }
+    },
+    "sender-resolve_send": {
+      "component_type": "ApiNode",
+      "id": "sender-resolve_send",
+      "name": "Read what the send mails",
+      "url": "{{CINATRA_BASE_URL}}/api/agents/passthrough",
+      "http_method": "POST",
+      "data": {
+        "tool": "extension_tool",
+        "input": {
+          "name": "send_contents",
+          "input": {
+            "recipientsRef": "{{ confirmedRecipientsRef }}",
+            "draftBundleRef": "{{ approvedDraftBundleRef }}",
+            "emailBodies": "{# pyagentspec-input-hint (do not remove): {{ emailBodies }} #}{{ emailBodies | tojson }}",
+            "callToAction": "{{ callToAction }}"
+          }
+        },
+        "agent_run_id": "{{ agent_run_id }}"
+      },
+      "inputs": [
+        {
+          "title": "agent_run_id",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "confirmedRecipientsRef",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "approvedDraftBundleRef",
+          "type": "string",
+          "default": ""
+        },
+        {
+          "title": "emailBodies",
+          "type": "array",
+          "json_schema": {
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "properties": {
+                "artifactId": {
+                  "type": "string"
+                },
+                "representationRevisionId": {
+                  "type": "string"
+                },
+                "contactId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "artifactId",
+                "representationRevisionId"
+              ]
+            }
+          }
+        },
+        {
+          "title": "callToAction",
+          "type": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "title": "recipients",
+          "type": "array",
+          "description": "One line per draft the send mails: the name, the address the send start addresses it to, the company and the subject of the draft. When the workspace's development-mode recipient override is on, the email pipeline mails the override address instead; this list does not show it.",
+          "json_schema": {
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "email": {
+                  "type": "string"
+                },
+                "company": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        {
+          "title": "emailBodies",
+          "type": "array",
+          "description": "The approved body of each draft the send mails, in draft order: its artifact revision, compared with the body of its draft, the contact of that draft, and the address and the subject of that draft as the Recipients list shows them. The publish card's Emails row shows it. It is the one list of exactly these five members that the send step surfaces: the send start reads it from the publish decision a person released, in this order, and compares each message's contact, address and subject with its entry exactly (the address with its outer white space removed, then byte for byte, the case included) and refuses the whole send on a difference.",
+          "json_schema": {
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "artifactId": {
+                  "type": "string"
+                },
+                "representationRevisionId": {
+                  "type": "string"
+                },
+                "contactId": {
+                  "type": "string"
+                },
+                "recipientEmail": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "artifactId",
+                "representationRevisionId",
+                "contactId",
+                "recipientEmail",
+                "subject"
+              ]
+            }
+          }
+        },
+        {
+          "title": "callToAction",
+          "type": "string",
+          "description": "The call to action the run names, trimmed, handed on only when the text of every body the send mails carries it. The publish card's Call to action row shows it."
+        }
+      ],
+      "metadata": {
+        "cinatra": {
+          "riskClass": "read_only",
+          "requiresApproval": false,
+          "packageName": "@cinatra-ai/email-delivery-agent",
+          "publishes": false,
+          "description": "The agent reads the approved draft bundle and the confirmed recipient list, the same two references the send step passes to the send start, and resolves them into what the send mails: the recipients (the address of each draft as the send chooses it) and the approved bodies (the body revision the run hands in for each mailed draft, joined to that draft by its contact or, when the bodies name no contact, by its position in the bundle, compared with the body of that draft, with the draft's contact and the address and subject of that draft, the same ones the Recipients line of that draft shows). The send step takes the recipients and the bodies from this step only, so the publish card, and the decision a person releases there, hold what the send mails. It also hands on the call to action the card's Call to action row shows, and only one that the text of every mailed body carries, so the card never shows a call to action the send does not mail. A body that cannot be joined to exactly one draft or is not the body of its draft, a mailed draft without a body, a contact or a subject (SUBJECT_MISSING), one contact or one artifact named twice, more than 50 bodies, drafts or confirmed recipients (TOO_MANY_BODIES, TOO_MANY_DRAFTS, TOO_MANY_RECIPIENTS, counted before anything is read), a bundle with nothing to mail, a run without a call to action (CALL_TO_ACTION_MISSING) or a mailed body without it (CALL_TO_ACTION_NOT_IN_EMAIL) ends the run before the card. This step reads the body of each mailed draft and no other body, and writes nothing."
+        }
+      }
+    },
+    "sender-end": {
+      "component_type": "EndNode",
+      "id": "sender-end",
+      "name": "End",
+      "outputs": [
+        {
+          "title": "recipients",
+          "type": "array",
+          "description": "One line per draft the send mails: the name, the address the send start addresses it to, the company and the subject of the draft. When the workspace's development-mode recipient override is on, the email pipeline mails the override address instead; this list does not show it.",
+          "json_schema": {
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "email": {
+                  "type": "string"
+                },
+                "company": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        {
+          "title": "emailBodies",
+          "type": "array",
+          "description": "The approved body of each draft the send mails, in draft order: its artifact revision, compared with the body of its draft, the contact of that draft, and the address and the subject of that draft as the Recipients list shows them. The publish card's Emails row shows it. It is the one list of exactly these five members that the send step surfaces: the send start reads it from the publish decision a person released, in this order, and compares each message's contact, address and subject with its entry exactly (the address with its outer white space removed, then byte for byte, the case included) and refuses the whole send on a difference.",
+          "json_schema": {
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "artifactId": {
+                  "type": "string"
+                },
+                "representationRevisionId": {
+                  "type": "string"
+                },
+                "contactId": {
+                  "type": "string"
+                },
+                "recipientEmail": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "artifactId",
+                "representationRevisionId",
+                "contactId",
+                "recipientEmail",
+                "subject"
+              ]
+            }
+          }
+        },
+        {
+          "title": "callToAction",
+          "type": "string",
+          "description": "The call to action the run names, trimmed, handed on only when the text of every body the send mails carries it. The publish card's Call to action row shows it."
+        }
+      ]
+    }
+  }
+}

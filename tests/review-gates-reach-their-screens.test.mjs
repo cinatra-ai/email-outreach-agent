@@ -151,7 +151,6 @@ const RECIPIENTS = {
   step: "review_gate",
 };
 const DRAFTS = { id: "drafts-approval_gate", child: "cinatra-ai/email-drafting-agent", step: "approval_gate" };
-const SENDER = { id: "sender-approval_gate", child: "cinatra-ai/email-delivery-agent", step: "approval_gate" };
 
 // The run's own start values, which the host also spreads into every screen.
 const RUN_INPUTS = {
@@ -207,27 +206,27 @@ test("the declared list does not take the surfacing flag off the recipients revi
 });
 
 // ---------------------------------------------------------------------------
-// The send confirmation
+// The send's publish card. Since cinatra#3089 the send confirmation is no gate
+// of the flow: the send is the flow's top-level publishing step, and the
+// application stops the run in front of it and surfaces every input of the step
+// in the publish decision; the card draws the rows the step declares. So what
+// reaches the card is what reaches the send's inputs.
 // ---------------------------------------------------------------------------
 
-test("the send confirmation asks the loader to surface its inputs", () => {
-  const gate = pauses.get(SENDER.id);
-  assert.ok(gate, `${SENDER.id} is not a pause of the outreach`);
-  assert.equal(gate.metadata.cinatra.surfaceGateInputs, true, `${SENDER.id} does not set surfaceGateInputs: true`);
+test("the send confirmation is no gate of the outreach: the publish card stands in front of the send", () => {
+  assert.equal(pauses.get("sender-approval_gate"), undefined, "a confirmation gate is still a pause of the outreach");
+  assert.equal(oas.$referenced_components.send.metadata.cinatra.publishes, true);
 });
 
-test("the campaign and the mailbox reach the send confirmation screen", () => {
-  const gate = pauses.get(SENDER.id);
-  const values = hostValues(
-    gateMessage(gate, { campaignId: "campaign-1", senderEmail: "sender@example.com" }),
-    RUN_INPUTS,
-  );
-  assert.equal(values.campaignId, "campaign-1", "the screen does not receive the campaign");
-  assert.equal(values.senderEmail, "sender@example.com", "the screen does not receive the mailbox");
-});
-
-test("the declared list does not take the surfacing flag off the send confirmation", () => {
-  assert.deepEqual(flagOmissions(SENDER.child, SENDER.step), []);
+test("the campaign, the mailbox and every row the publish card shows reach the send's inputs", () => {
+  const send = oas.$referenced_components.send;
+  const titles = send.inputs.map((i) => i.title);
+  const fed = (input) =>
+    oas.data_flow_connections.filter((e) => e.destination_node.$component_ref === "send" && e.destination_input === input);
+  for (const input of ["campaignId", "senderEmail", ...send.metadata.cinatra.publishRows.map((row) => row.input)]) {
+    assert.ok(titles.includes(input), `the send declares no input ${input}`);
+    assert.equal(fed(input).length, 1, `the send's ${input} is not fed by exactly one data edge`);
+  }
 });
 
 // ---------------------------------------------------------------------------

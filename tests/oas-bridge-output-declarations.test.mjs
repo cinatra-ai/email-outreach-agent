@@ -4,16 +4,17 @@
 // The runtime asks the model for exactly the shape this flow declares: an
 // object level with no declared members is sent CLOSED and EMPTY, so a bridge
 // output that declares a list or object without member fields can carry
-// nothing. These tests pin the members of the two bridge outputs that were
-// measured free-form, so a future edit cannot silently drop them back to a
-// bare `{"type": "object"}`.
-//
-// The declared members are the ones this repository's own consumers read:
+// nothing. These tests pin the members of the bridge output that was measured
+// free-form, so a future edit cannot silently drop it back to a bare
+// `{"type": "object"}`:
 //   - `recipients-generate / confirmedRecipients` — the per-row shape the
 //     node's own system prompt spells out (Step 4 / the objects_save call in
 //     Step 5).
-//   - `sender-send / sendResult` — the fields the downstream campaign-summary
-//     message dereferences (`sendResult.status`, `sendResult.summary`).
+// The send used to be a bridge step whose `sendResult` object the campaign
+// summary dereferenced. Since cinatra#3089 it is a model-free passthrough call
+// (the top-level `send`) whose answer is six flat outputs, so no model shapes
+// what the summary reads; the last test pins that every value the ending reads
+// is one of those declared outputs.
 //
 // Zero-dependency; runs on plain node:test via tests/run.mjs.
 // ---------------------------------------------------------------------------
@@ -92,12 +93,20 @@ test("recipients-generate / confirmedRecipients declares its item members", () =
   );
 });
 
-test("sender-send / sendResult declares the members its consumer reads", () => {
-  const output = bridgeOutput("sender-send", "sendResult");
-  assert.equal(output.type, "object");
-  assertDeclaredMembers(
-    "sender-send / sendResult",
-    output.json_schema,
-    ["status", "summary"],
-  );
+test("the send is no bridge step, and every value the ending reads is a declared output of the send", () => {
+  const send = oas.$referenced_components.send;
+  assert.ok(!nodes.has("send") && !nodes.has("sender-send"), "a model bridge step sends");
+  assert.match(send.url, /\/api\/agents\/passthrough$/);
+  const declared = new Map(send.outputs.map((o) => [o.title, o.type]));
+  for (const edge of oas.data_flow_connections) {
+    if (edge.source_node.$component_ref !== "send") continue;
+    assert.ok(declared.has(edge.source_output), `${edge.name} reads ${edge.source_output}, which the send does not declare`);
+    assert.ok(["string", "integer"].includes(declared.get(edge.source_output)), `${edge.source_output} is not a flat value`);
+  }
+  for (const consumer of ["campaign_summary", "end"]) {
+    assert.ok(
+      oas.data_flow_connections.some((e) => e.source_node.$component_ref === "send" && e.destination_node.$component_ref === consumer),
+      `${consumer} reads nothing of the send's answer`,
+    );
+  }
 });
