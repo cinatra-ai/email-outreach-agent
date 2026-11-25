@@ -1,22 +1,27 @@
 // ---------------------------------------------------------------------------
-// The reviewed email bodies, and only those, reach the send - zero-dependency,
-// runs under tests/run.mjs. cinatra-ai/cinatra#3089.
+// The bodies the send receives are the revisions the review step pinned -
+// zero-dependency, runs under tests/run.mjs. cinatra-ai/cinatra#3089.
 //
-// The drafting copy files each drafted body and the application reviews each
-// one on its review card; an edit there is a new revision of that body. The
-// copy hands on the filed bodies (approvedBodyArtifacts, one artifact revision
-// per draft, from the filing step that handed the review its targets). The
-// delivery copy's read step joins each body to its draft and hands on the
+// The drafting copy files each drafted body, and its filing step hands the
+// review step the list of the filed revisions (reviewTargets, one artifact
+// revision per draft): those are the revisions the application's review pins and
+// shows. The same filing step's list leaves the copy as approvedBodyArtifacts.
+// The delivery copy's read step joins each body to its draft and hands on the
 // bodies the send mails (emailBodies); the send takes them from the read step
-// only, its publish card's Emails row shows them, and the application's send
-// start reads that one list from the decision the person released and mails
-// the decided revision of each body.
+// only, and its publish card's Emails row shows them.
 //
-// This suite follows that list through cinatra/oas.json, edge by edge: from
-// the filing step to the drafting copy's end, from the drafting copy to the
-// delivery copy, through its read step to its end, and from there to the send.
-// No other edge feeds any of these inputs, and no model step stands on the
-// road.
+// This suite follows that list through cinatra/oas.json, edge by edge: from the
+// filing step to the review step and to the drafting copy's end, from the
+// drafting copy to the delivery copy, through its read step to its end, and from
+// there to the send. No other edge feeds any of these inputs, and no model step
+// stands on the road.
+//
+// WHAT THIS DOES NOT PROVE. Nothing in this repository can show what the
+// application's review approves, or what its send does with a body that changed
+// after it was filed. The suite pins only this package's wiring: the send is
+// handed the revisions the filing step filed and the review step pinned, and no
+// step here replaces, edits or re-reads them. What the application does with
+// those revisions is its own behaviour; see "Known limits" in AGENTS.md.
 // ---------------------------------------------------------------------------
 
 import { test } from "node:test";
@@ -44,24 +49,24 @@ const readers = (flow, step, output) =>
     .filter((e) => refOf(e.source_node) === step && e.source_output === output)
     .map((e) => `${refOf(e.destination_node)}.${e.destination_input}`);
 
-test("the drafting copy hands on the bodies its filing step filed for the review", () => {
+test("the drafting copy hands the review the revisions its filing step filed, and hands on the bodies of that same step", () => {
   assert.deepEqual(sources(drafts, "drafts-end", "approvedBodyArtifacts"), ["drafts-file_drafts.artifacts"]);
   assert.deepEqual(sources(drafts, "drafts-approval_gate", "reviewTargets"), ["drafts-file_drafts.reviewTargets"]);
   assert.ok(drafts.outputs.some((o) => o.title === "approvedBodyArtifacts"));
-  // The copy reaches its end with the bodies only past the review.
+  // The copy reaches its end only past the review step.
   const control = drafts.control_flow_connections.map((e) => [refOf(e.from_node), refOf(e.to_node)]);
   assert.deepEqual(control.filter(([from]) => from === "drafts-file_drafts").map(([, to]) => to), ["drafts-approval_gate"]);
   assert.deepEqual(control.filter(([from]) => from === "drafts-approval_gate").map(([, to]) => to), ["drafts-end"]);
 });
 
-test("the delivery copy takes the reviewed bodies from the drafting copy and nothing else", () => {
+test("the delivery copy takes the filed, pinned bodies from the drafting copy and nothing else", () => {
   assert.deepEqual(sources(oas, "sender_flow", "emailBodies"), ["drafts_flow.approvedBodyArtifacts"]);
   assert.deepEqual(readers(oas, "drafts_flow", "approvedBodyArtifacts"), ["sender_flow.emailBodies"]);
   assert.deepEqual(sources(oas, "sender_flow", "callToAction"), ["drafts_flow.callToAction"]);
   assert.deepEqual(sources(oas, "sender_flow", "approvedDraftBundleRef"), ["drafts_flow.draftBundleRef"]);
 });
 
-test("the delivery copy's read step joins the bodies to the drafts and hands on what the send mails", () => {
+test("the delivery copy's read step joins the handed-in bodies to the drafts and hands on what the send mails", () => {
   assert.deepEqual(sources(delivery, "sender-resolve_send", "emailBodies"), ["sender-start.emailBodies"]);
   for (const output of ["recipients", "emailBodies", "callToAction"]) {
     assert.deepEqual(sources(delivery, "sender-end", output), [`sender-resolve_send.${output}`]);
@@ -89,7 +94,7 @@ test("the send takes the bodies, the recipients and the call to action from the 
   assert.ok(send.inputs.some((i) => i.title === "emailBodies"));
 });
 
-test("no model step stands on the road from the filed bodies to the send", () => {
+test("no model step stands on the road from the filed bodies to the send, so nothing rewrites a body", () => {
   const isModel = (node) => typeof node?.url === "string" && node.url.includes("/api/llm-bridge");
   for (const id of ["drafts-file_drafts", "drafts-approval_gate"]) assert.ok(!isModel(drafts.$referenced_components[id]), id);
   for (const id of ["sender-file_recipients", "sender-resolve_send"]) assert.ok(!isModel(delivery.$referenced_components[id]), id);

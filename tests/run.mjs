@@ -24,5 +24,5 @@ import "./recipient-filing.test.mjs";
 import "./review-gates-reach-their-screens.test.mjs";
 import "./recipient-removals-are-applied.test.mjs";
 import "./drafts-reach-their-review.test.mjs";
-import "./approved-bodies-reach-the-send.test.mjs";
+import "./send-receives-the-pinned-bodies.test.mjs";
 import "./send-is-the-released-top-level-step.test.mjs";

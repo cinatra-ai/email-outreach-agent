@@ -53,7 +53,7 @@
         "step": "generate",
         "path": "data.system",
         "text": "\n\nRecipient limit, checked after Step 4 and before Step 5: the resolved recipient pool MUST NOT exceed the agent's cinatra.json.limits.maxRecipients (default 200). With several ticked lists the limit applies to their total: the unioned, filtered rows of Step 4, each contact counted once. If the count exceeds the cap, return an error JSON before objects_save: {\"error\":\"The ticked lists have N contacts which exceeds the maxRecipients limit of M. Pick fewer or smaller lists or override maxRecipients via the agent install settings.\"}. Do NOT silently truncate \u2014 fail/block, not truncate.",
-        "reason": "The child's own manifest limit on recipients, which the outreach does not declare."
+        "reason": "The child's own limit of 200 recipients, which its model reads from a manifest key the outreach does not declare. The outreach bounds the confirmed recipients itself, at what one send takes (50), in its recipient_limit_check after the review, so a bound of 200 here would only let through runs that the send cannot deliver."
       },
       {
         "child": "cinatra-ai/email-recipient-selection-agent",

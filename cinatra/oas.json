@@ -97,6 +97,15 @@
       "$component_ref": "recipients_flow"
     },
     {
+      "$component_ref": "recipient_limit_check"
+    },
+    {
+      "$component_ref": "recipient_limit_branch"
+    },
+    {
+      "$component_ref": "too_many_recipients"
+    },
+    {
       "$component_ref": "context_offeringContext"
     },
     {
@@ -148,12 +157,54 @@
     },
     {
       "component_type": "ControlFlowEdge",
-      "name": "recipients_flow_to_context_offeringContext",
+      "name": "recipients_flow_to_recipient_limit_check",
       "from_node": {
         "$component_ref": "recipients_flow"
       },
       "to_node": {
+        "$component_ref": "recipient_limit_check"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "recipient_limit_check_to_recipient_limit_branch",
+      "from_node": {
+        "$component_ref": "recipient_limit_check"
+      },
+      "to_node": {
+        "$component_ref": "recipient_limit_branch"
+      }
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "recipient_limit_branch_default_to_context_offeringContext",
+      "from_node": {
+        "$component_ref": "recipient_limit_branch"
+      },
+      "to_node": {
         "$component_ref": "context_offeringContext"
+      },
+      "from_branch": "default"
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "recipient_limit_branch_too_many_to_too_many_recipients",
+      "from_node": {
+        "$component_ref": "recipient_limit_branch"
+      },
+      "to_node": {
+        "$component_ref": "too_many_recipients"
+      },
+      "from_branch": "too_many"
+    },
+    {
+      "component_type": "ControlFlowEdge",
+      "name": "too_many_recipients_to_end",
+      "from_node": {
+        "$component_ref": "too_many_recipients"
+      },
+      "to_node": {
+        "$component_ref": "end"
       }
     },
     {
@@ -437,6 +488,42 @@
         "$component_ref": "end"
       },
       "destination_input": "campaignId"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "recipients_flow_to_recipient_limit_check_recipientCount",
+      "source_node": {
+        "$component_ref": "recipients_flow"
+      },
+      "source_output": "recipientCount",
+      "destination_node": {
+        "$component_ref": "recipient_limit_check"
+      },
+      "destination_input": "recipientCount"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "recipient_limit_check_to_recipient_limit_branch_verdict",
+      "source_node": {
+        "$component_ref": "recipient_limit_check"
+      },
+      "source_output": "output",
+      "destination_node": {
+        "$component_ref": "recipient_limit_branch"
+      },
+      "destination_input": "verdict"
+    },
+    {
+      "component_type": "DataFlowEdge",
+      "name": "recipients_flow_to_too_many_recipients_recipientCount",
+      "source_node": {
+        "$component_ref": "recipients_flow"
+      },
+      "source_output": "recipientCount",
+      "destination_node": {
+        "$component_ref": "too_many_recipients"
+      },
+      "destination_input": "recipientCount"
     },
     {
       "component_type": "DataFlowEdge",
@@ -967,27 +1054,33 @@
         },
         {
           "title": "status",
-          "type": "string"
+          "type": "string",
+          "default": ""
         },
         {
           "title": "sentCount",
-          "type": "integer"
+          "type": "integer",
+          "default": 0
         },
         {
           "title": "operationId",
-          "type": "string"
+          "type": "string",
+          "default": ""
         },
         {
           "title": "errorMessage",
-          "type": "string"
+          "type": "string",
+          "default": ""
         },
         {
           "title": "alreadySentCount",
-          "type": "integer"
+          "type": "integer",
+          "default": 0
         },
         {
           "title": "inDoubtCount",
-          "type": "integer"
+          "type": "integer",
+          "default": 0
         }
       ],
       "inputs": [
@@ -1001,27 +1094,33 @@
         },
         {
           "title": "status",
-          "type": "string"
+          "type": "string",
+          "default": ""
         },
         {
           "title": "sentCount",
-          "type": "integer"
+          "type": "integer",
+          "default": 0
         },
         {
           "title": "operationId",
-          "type": "string"
+          "type": "string",
+          "default": ""
         },
         {
           "title": "errorMessage",
-          "type": "string"
+          "type": "string",
+          "default": ""
         },
         {
           "title": "alreadySentCount",
-          "type": "integer"
+          "type": "integer",
+          "default": 0
         },
         {
           "title": "inDoubtCount",
-          "type": "integer"
+          "type": "integer",
+          "default": 0
         }
       ]
     },
@@ -4387,6 +4486,78 @@
               "decision": "publish"
             }
           ]
+        }
+      }
+    },
+    "recipient_limit_check": {
+      "component_type": "PluginTemplateNode",
+      "id": "recipient_limit_check",
+      "name": "recipient_limit_check",
+      "metadata": {
+        "cinatra": {
+          "publishes": false,
+          "purpose": "confirmed-recipients-within-the-sends-limit"
+        }
+      },
+      "inputs": [
+        {
+          "title": "recipientCount",
+          "type": "integer"
+        }
+      ],
+      "outputs": [
+        {
+          "title": "output",
+          "type": "string"
+        }
+      ],
+      "branches": [
+        "next"
+      ],
+      "input_mapping": {},
+      "output_mapping": {},
+      "template": "{% if recipientCount > 50 %}too_many{% else %}within{% endif %}",
+      "component_plugin_name": "NodesPlugin",
+      "component_plugin_version": "26.1.0"
+    },
+    "recipient_limit_branch": {
+      "component_type": "BranchingNode",
+      "id": "recipient_limit_branch",
+      "name": "recipient_limit_branch",
+      "metadata": {
+        "cinatra": {
+          "purpose": "stop-before-drafting-when-the-confirmed-recipients-exceed-what-one-send-takes"
+        }
+      },
+      "inputs": [
+        {
+          "title": "verdict",
+          "type": "string"
+        }
+      ],
+      "outputs": [],
+      "branches": [
+        "default",
+        "too_many"
+      ],
+      "mapping": {
+        "too_many": "too_many"
+      }
+    },
+    "too_many_recipients": {
+      "component_type": "OutputMessageNode",
+      "id": "too_many_recipients",
+      "name": "Too many recipients for one send",
+      "inputs": [
+        {
+          "title": "recipientCount",
+          "type": "integer"
+        }
+      ],
+      "message": "This campaign stopped before any email was drafted: {{ recipientCount }} recipients are confirmed, and one campaign sends to at most 50. Start the campaign again with fewer or smaller lists, or remove recipients on the review, so that at most 50 remain.",
+      "metadata": {
+        "cinatra": {
+          "purpose": "plain-language-ending-for-too-many-confirmed-recipients"
         }
       }
     }

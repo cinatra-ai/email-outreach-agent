@@ -39,3 +39,8 @@ Do NOT set `audience` — leave it empty so the recipient agent selects from
 all available contacts.
 
 After completing these three steps, return the `campaignId`. The runtime will automatically dispatch the remaining stages to child agents.
+
+## Known limits
+
+- One campaign sends to at most 50 recipients: the delivery step takes at most 50 emails, and the application reviews at most 50 bodies at once. The flow checks the number of confirmed recipients right after the recipients review (`recipient_limit_check`, `recipient_limit_branch`, `too_many_recipients` in `cinatra/oas.json`) and stops before any email is drafted when it is above 50. The limit is a literal of the flow; `tests/flow-contract.test.mjs` keeps it equal to the delivery copy's own bound.
+- A body that is edited on its own page after it was filed is not mailed: the send refuses the whole call and the person starts the campaign again. A change request on one body of several does not produce a corrected body in this flow, because the pack declares no repair. Both are behaviours of the application that this flow relies on, not something this repository proves: the send reads each body only while it is still the artifact's current, approved revision (`src/lib/artifacts/current-decided-revision-read.ts` in cinatra-ai/cinatra, added by cinatra-ai/cinatra#4787). The tests here pin only the wiring that hands the send the revisions the review step pinned (`tests/send-receives-the-pinned-bodies.test.mjs`).
