@@ -22,6 +22,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 
 export const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const LIST_PATH = "scripts/embedded-copies.json";
@@ -96,6 +97,114 @@ function walkRefs(node, visit) {
   }
   if (typeof node.$component_ref === "string") node.$component_ref = visit(node.$component_ref);
   for (const value of Object.values(node)) walkRefs(value, visit);
+}
+
+const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+
+/** The members of the JSON object that starts at `at`: each key (decoded) with
+ * the [start, end) offsets of its value token, in the order written. The text
+ * is known to parse; this walks it by position and changes nothing. */
+function membersOf(text, at) {
+  const members = [];
+  let i = skipSpace(text, at + 1);
+  if (text[i] === "}") return members;
+  for (;;) {
+    const keyEnd = skipString(text, i);
+    const key = JSON.parse(text.slice(i, keyEnd));
+    i = skipSpace(text, keyEnd);
+    const start = skipSpace(text, i + 1);
+    const end = skipValue(text, start);
+    members.push({ key, start, end });
+    i = skipSpace(text, end);
+    if (text[i] !== ",") return members;
+    i = skipSpace(text, i + 1);
+  }
+}
+
+/**
+ * The [start, end) offsets of the value token of `node_id` inside the
+ * `input` object of the top-level object of a JSON text, or null when there is
+ * none. A member named `node_id` or `input` that is written twice at its level
+ * throws: the text is not edited where it could be read two ways.
+ */
+function nodeIdSpan(text) {
+  const only = (members, name, where) => {
+    const found = members.filter((member) => member.key === name);
+    if (found.length > 1) throw new Error(`${where} '${name}' is written more than once`);
+    return found[0] ?? null;
+  };
+  const input = only(membersOf(text, skipSpace(text, 0)), "input", "the text's member");
+  if (!input || text[input.start] !== "{") return null;
+  const nodeId = only(membersOf(text, input.start), "node_id", "the input's member");
+  return nodeId ? [nodeId.start, nodeId.end] : null;
+}
+
+/** A string token for `id`; written with \u escapes when the token it replaces used them. */
+function tokenFor(id, replaced) {
+  const token = JSON.stringify(id);
+  if (!/\\u/.test(replaced)) return token;
+  return token.replace(/[\u007f-\uffff]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
+}
+
+/**
+ * The JSON text of a filing step with `input.node_id` changed from `from` to
+ * `to` and every other byte kept as written (spaces, tabs, CR, LF, key order,
+ * number formats, duplicate keys elsewhere). The edit is made by position, then
+ * checked by parsing: the result must parse to the old value with only
+ * `input.node_id` changed.
+ */
+function moveNodeId(text, from, to, fail) {
+  const named = `step '${from}'`;
+  let span;
+  try {
+    span = nodeIdSpan(text);
+  } catch (error) {
+    fail(`${named} carries its data as a text in which ${error.message}`);
+  }
+  if (!span) fail(`${named} carries its data as a text in which the input's node_id cannot be located`);
+  const [start, end] = span;
+  const moved = text.slice(0, start) + tokenFor(to, text.slice(start, end)) + text.slice(end);
+  const expected = JSON.parse(text);
+  expected.input.node_id = to;
+  let actual;
+  try {
+    actual = JSON.parse(moved);
+  } catch {
+    fail(`${named} carries its data as a text that does not parse once its node_id moves`);
+  }
+  if (!isDeepStrictEqual(actual, expected)) {
+    fail(`${named} carries its data as a text that changes in more than its node_id once it moves`);
+  }
+  return moved;
+}
+
+/**
+ * A filing step (artifact_materialize) names its own step id in its input:
+ * the host requires `data.input.node_id` to equal the ApiNode's id, because it
+ * is the step's idempotency identity. When the step id changes, that input
+ * changes with it. The step's `data` is an object or a JSON text (the kind
+ * check reads both; its `input` must be an object). A text keeps every byte
+ * as written but the one node_id token; a text that does not parse fails and
+ * names the step.
+ */
+function moveStepId(step, to, fail) {
+  let data = step.data;
+  if (typeof data === "string") {
+    try {
+      data = JSON.parse(data);
+    } catch {
+      fail(`step '${step.id}' carries its data as a text that does not parse`);
+    }
+  }
+  if (isObject(data) && data.tool === "artifact_materialize") {
+    if (!isObject(data.input)) fail(`step '${step.id}' is a filing step whose input is not an object`);
+    if (data.input.node_id === step.id) {
+      if (typeof step.data === "string") step.data = moveNodeId(step.data, step.id, to, fail);
+      else data.input.node_id = to;
+    }
+  }
+  if (step.name === step.id) step.name = to;
+  step.id = to;
 }
 
 function stepOf(flow, stepId, fail) {
@@ -261,8 +370,7 @@ function applyEntry(flow, entry, fail) {
       const renamed = {};
       for (const [key, value] of Object.entries(rc)) renamed[key === entry.step ? entry.to : key] = value;
       flow.$referenced_components = renamed;
-      if (step.name === step.id) step.name = entry.to;
-      step.id = entry.to;
+      moveStepId(step, entry.to, fail);
       const token = new RegExp(`(^|_to_)${escapeRegExp(entry.step)}(?=_|$)`, "g");
       for (const edge of [...flow.control_flow_connections, ...flow.data_flow_connections]) {
         if (edgeTouches(edge, entry.step)) edge.name = edge.name.replace(token, `$1${entry.to}`);
@@ -275,11 +383,10 @@ function applyEntry(flow, entry, fail) {
   }
 }
 
-function prefixFlow(flow, prefix) {
+function prefixFlow(flow, prefix, fail) {
   const refs = {};
   for (const [key, step] of Object.entries(flow.$referenced_components)) {
-    if (step.name === step.id) step.name = prefix + step.id;
-    step.id = prefix + step.id;
+    moveStepId(step, prefix + step.id, fail);
     refs[prefix + key] = step;
   }
   flow.$referenced_components = refs;
@@ -301,7 +408,9 @@ export function generateCopy(child, group) {
     if (typeof entry.reason !== "string" || entry.reason.trim() === "") fail("it carries no reason");
     applyEntry(flow, entry, fail);
   });
-  prefixFlow(flow, group.prefix);
+  prefixFlow(flow, group.prefix, (why) => {
+    throw new Error(`${group.repository}: ${why}`);
+  });
   flow.id = group.copyId;
   return flow;
 }
