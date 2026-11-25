@@ -38,15 +38,20 @@ import { createElement, useEffect, useRef, useState, type ReactNode } from "reac
 // reads; do not write the string here. tests/list-picker-renderer.test.mjs
 // reproduces the lift and checks its result against the gate and the generation.
 //
-// THE RECOVERY. With no row to pick (an empty read or a failed one) the run
-// would wait on this step for good, because nothing can be ticked. When the
-// binding declares `refreshValue`, the step draws Try again; a press writes
-// `{ listIds: [], listNames: [], refresh: <refreshValue> }`. The declared value
-// ("refresh") is the answer the flow's `recipients-scope_branch` maps to its
-// `refresh` branch, which reads the CRM's lists again and comes back to this
-// step. The empty `listIds` keep the host's pick check false, so the press is
-// never sent as a pick, and the report stays `false`, so Continue stays
-// unavailable (design I.1: "The Continue stays unavailable").
+// THE RECOVERY. With no row to pick (an empty read or a failed one) nothing can
+// be ticked. When the host hands `onRequestRefresh` (it does only while the run
+// waits at this step and the step is editable), the step draws Try again. A
+// press asks the host to read the lists again, draws the design's loading
+// reading (I.1, run-list-step-loading) while it waits, and then draws the new
+// read in place of `value`. The press answers nothing: it writes nothing, the
+// run does not resume, and Continue stays as the picks leave it. A rejected or
+// malformed result draws the failed reading. A second press while one read is
+// pending does nothing, and a read that ends after the step is gone sets
+// nothing. A ticked list that the new read no longer offers is dropped, and the
+// pick without it is written as an ordinary pick change. The binding's
+// `params.refreshValue` is not read here; it stays declared because the
+// recipient selection package declares the same binding with it, and the
+// application refuses two declarations of one binding that differ.
 //
 // WHAT IT REPORTS. Through `onValidityChange` (props contract 1, an optional
 // prop): `false` while fewer lists are ticked than the declared `minSelected`
@@ -62,7 +67,7 @@ import { createElement, useEffect, useRef, useState, type ReactNode } from "reac
 //
 // WITH NO LIST TO PICK it draws the empty-state message the binding declared,
 // as declared (or, for a failed read, its one failed-read alert), no row and
-// no link, and Try again when the binding declares a refresh value.
+// no link, and Try again when the host offers a new read.
 //
 // A COMPLETED STEP, REOPENED. On `mode="view"` the value may be the step's
 // recorded answer rather than its input: the write `{ listIds, listNames }`,
@@ -91,6 +96,8 @@ export type ListPickerProps = {
   disabled?: boolean;
   mode?: "edit" | "view";
   bindingParams?: Readonly<Record<string, unknown>>;
+  /** Ask the host to read the lists again for the step the run waits at; never rejects (cinatra-ai/cinatra#3562). */
+  onRequestRefresh?: () => Promise<unknown>;
 };
 
 /** One list the step offers. */
@@ -232,9 +239,48 @@ function rowWords(list: OfferedList) {
   );
 }
 
+/** The failed reading, drawn when a new read rejects (the host never rejects). */
+const FAILED_READ: { lists: OfferedList[]; listsRead: "failed" } = { lists: [], listsRead: "failed" };
+
+/** The loading reading (design I.1, run-list-step-loading): a skeleton row in each row's place. */
+function loadingRows() {
+  const bar = (width: string, height: string) =>
+    createElement("span", { className: `block ${height} ${width} rounded bg-surface-muted` });
+  return createElement(
+    "div",
+    { className: "grid gap-2", "aria-busy": "true", "data-testid": "list-picker-loading" },
+    [0, 1, 2].map((key) =>
+      createElement(
+        "div",
+        { key, className: "flex gap-2.5 rounded-lg border border-line bg-surface-strong px-3 py-2.5" },
+        createElement("span", { className: "mt-[3px] size-3.5 flex-none rounded-[3px] bg-surface-muted" }),
+        createElement(
+          "span",
+          { className: "grid min-w-0 flex-1 gap-[7px] pt-0.5" },
+          bar("w-[46%]", "h-[9px]"),
+          bar("w-[62%]", "h-[7px]"),
+        ),
+      ),
+    ),
+  );
+}
+
 /** The list step. */
 export default function ListPickerRenderer(props: ListPickerProps) {
-  const lists = offeredLists(props.value);
+  // A new read the host made on Try again replaces the step's value for this
+  // component; until then the step draws `props.value`.
+  const [reread, setReread] = useState<{ content: unknown } | null>(null);
+  const [reading, setReading] = useState(false);
+  const inFlight = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const content = reread !== null ? reread.content : props.value;
+  const lists = offeredLists(content);
   const writes =
     (props.mode === undefined || props.mode === "edit") &&
     (props.disabled === undefined || props.disabled === false);
@@ -259,6 +305,34 @@ export default function ListPickerRenderer(props: ListPickerProps) {
     setTicked(next);
     const nameOf = new Map(lists.map((list) => [list.id, list.name]));
     void props.onChange({ listIds: next, listNames: next.map((tickedId) => nameOf.get(tickedId) ?? "") });
+  };
+
+  // Try again: the host reads the lists again for the step the run waits at.
+  // The press answers nothing; the new read is drawn in place of the value.
+  const requestRefresh = props.onRequestRefresh;
+  const refresh = async () => {
+    if (!writes || typeof requestRefresh !== "function" || inFlight.current) return;
+    inFlight.current = true;
+    setReading(true);
+    let next: unknown;
+    try {
+      next = await requestRefresh();
+    } catch {
+      next = FAILED_READ;
+    }
+    inFlight.current = false;
+    if (!mounted.current) return;
+    setReread({ content: next });
+    setReading(false);
+    // A ticked list the new read no longer offers is dropped, and the pick
+    // without it is written as an ordinary pick change.
+    const nowOffered = offeredLists(next);
+    const kept = ticked.filter((id) => nowOffered.some((list) => list.id === id));
+    if (kept.length !== ticked.length) {
+      setTicked(kept);
+      const nameOf = new Map(nowOffered.map((list) => [list.id, list.name]));
+      void props.onChange({ listIds: kept, listNames: kept.map((id) => nameOf.get(id) ?? "") });
+    }
   };
 
   const question = declaredWords(props.bindingParams, "question");
@@ -321,10 +395,13 @@ export default function ListPickerRenderer(props: ListPickerProps) {
     );
   }
 
+  if (reading) {
+    return root(header, loadingRows());
+  }
+
   if (lists.length === 0) {
-    const refreshValue = declaredWords(props.bindingParams, "refreshValue");
     const tryAgain =
-      refreshValue !== null && writes
+      typeof requestRefresh === "function" && writes
         ? createElement(
             "button",
             {
@@ -332,14 +409,13 @@ export default function ListPickerRenderer(props: ListPickerProps) {
               className: TRY_AGAIN_CLASSES,
               "data-testid": "list-picker-try-again",
               onClick: () => {
-                if (!writes) return;
-                void props.onChange({ listIds: [], listNames: [], refresh: refreshValue });
+                void refresh();
               },
             },
             TRY_AGAIN_WORDS,
           )
         : null;
-    if (!readSucceeded(props.value)) {
+    if (!readSucceeded(content)) {
       return root(
         header,
         createElement(

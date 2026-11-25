@@ -8,8 +8,9 @@
 // Continue unavailable, and `true` from the first tick. Each tick or untick
 // writes `{ listIds, listNames }` in the order ticked. With no list to pick it
 // draws the empty-state message the binding declared (or, for a failed read,
-// the step's one failed-read alert), no row and no link, and Try again, which
-// writes the declared refresh value so the flow reads the lists again.
+// the step's one failed-read alert), no row and no link, and Try again when the
+// host offers a new read (`onRequestRefresh`): a press draws the loading
+// reading, then the new read in place of the value, and answers nothing.
 //
 // The last suite reproduces the host's lift of that write into the gate's
 // answer and checks the lifted answer against the gate and the generation step
@@ -77,6 +78,18 @@ async function mount(props) {
 }
 
 const boxes = (container) => [...container.querySelectorAll('input[type="checkbox"]')];
+
+/** The failed read the host hands back (`listsRead: "failed"`, no list). */
+const FAILED = { lists: [], listsRead: "failed" };
+
+/** A promise and its resolve, to hold a new read pending. */
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
 
 async function click(element) {
   await act(async () => {
@@ -156,7 +169,7 @@ describe("the list step, mounted", () => {
   });
 
   it("an empty list draws the declared message, no row and no link, Try again, and holds the step", async () => {
-    const view = await mount({ value: { lists: [], listsRead: "ok" } });
+    const view = await mount({ value: { lists: [], listsRead: "ok" }, onRequestRefresh: async () => FAILED });
     try {
       assert.equal(boxes(view.container).length, 0);
       assert.equal(view.container.querySelectorAll("a, [href]").length, 0);
@@ -178,7 +191,7 @@ describe("the list step, mounted", () => {
       { lists: LISTS },
       "not json",
     ]) {
-      const view = await mount({ value });
+      const view = await mount({ value, onRequestRefresh: async () => FAILED });
       try {
         assert.equal(boxes(view.container).length, 0);
         const alert = view.container.querySelector('[role="alert"]');
@@ -193,33 +206,188 @@ describe("the list step, mounted", () => {
     }
   });
 
-  it("Try again writes the declared refresh value and keeps Continue unavailable", async () => {
-    for (const listsRead of ["ok", "failed"]) {
-      const view = await mount({ value: { lists: [], listsRead } });
+  it("a press calls onRequestRefresh once, never onChange, and draws the loading reading while it waits", async () => {
+    const pending = deferred();
+    let calls = 0;
+    const view = await mount({
+      value: { lists: [], listsRead: "failed" },
+      onRequestRefresh: () => {
+        calls += 1;
+        return pending.promise;
+      },
+    });
+    try {
+      await click(view.container.querySelector('[data-testid="list-picker-try-again"]'));
+      assert.equal(calls, 1);
+      assert.ok(view.container.querySelector('[data-testid="list-picker-loading"]'), "no loading reading");
+      assert.equal(view.container.querySelector('[role="alert"]'), null, "the failed reading stays while reading");
+      assert.equal(view.container.querySelector('[data-testid="list-picker-try-again"]'), null, "Try again stays while reading");
+      assert.equal(
+        view.container.firstElementChild?.getAttribute("data-conformance-id"),
+        "run-list-step-multi-pick",
+      );
+      await act(async () => {
+        pending.resolve({ lists: LISTS, listsRead: "ok" });
+      });
+      assert.equal(calls, 1);
+      assert.deepEqual(view.writes, [], "the press or the new read is written");
+      assert.equal(view.container.querySelector('[data-testid="list-picker-loading"]'), null);
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("the rows of an ok read appear in place, and Continue stays unavailable until a list is ticked", async () => {
+    const view = await mount({
+      value: { lists: [], listsRead: "ok" },
+      onRequestRefresh: async () => ({ lists: LISTS, listsRead: "ok" }),
+    });
+    try {
+      await click(view.container.querySelector('[data-testid="list-picker-try-again"]'));
+      assert.deepEqual(
+        [...view.container.querySelectorAll('[data-testid="list-picker-row-title"]')].map((title) => title.textContent),
+        LISTS.map((list) => list.name),
+      );
+      assert.ok(boxes(view.container).every((box) => box.checked === false), "a row is ticked for the reader");
+      assert.deepEqual(view.writes, []);
+      assert.deepEqual(view.reports, [false]);
+      await click(boxes(view.container)[2]);
+      assert.deepEqual(view.writes, [{ listIds: ["view-c"], listNames: ["Newsletter"] }]);
+      assert.deepEqual(view.reports, [false, true]);
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("a failed, rejected or malformed read draws the failed reading with Try again still offered", async () => {
+    const results = {
+      failed: () => Promise.resolve(FAILED),
+      rejected: () => Promise.reject(new Error("no read")),
+      "no object": () => Promise.resolve(null),
+      "no outcome": () => Promise.resolve({ lists: LISTS }),
+    };
+    for (const [label, onRequestRefresh] of Object.entries(results)) {
+      const view = await mount({ value: { lists: [], listsRead: "ok" }, onRequestRefresh });
       try {
         await click(view.container.querySelector('[data-testid="list-picker-try-again"]'));
-        assert.deepEqual(view.writes, [{ listIds: [], listNames: [], refresh: PARAMS.refreshValue }]);
-        assert.deepEqual(view.reports, [false], "the press reports the step sendable");
+        const alert = view.container.querySelector('[role="alert"]');
+        assert.ok(alert, `${label}: no failed reading`);
+        assert.equal(alert.textContent.includes("This list could not be read."), true, label);
+        assert.ok(alert.querySelector('[data-testid="list-picker-try-again"]'), `${label}: no Try again`);
+        assert.equal(boxes(view.container).length, 0, label);
+        assert.deepEqual(view.writes, [], label);
+        assert.deepEqual(view.reports, [false], label);
       } finally {
         await view.unmount();
       }
     }
   });
 
-  it("offers no Try again without a declared refresh value, or on a read-only reading", async () => {
+  it("offers no Try again without onRequestRefresh, on a read-only reading, or when disabled", async () => {
+    const offer = async () => ({ lists: LISTS, listsRead: "ok" });
     const readings = [
-      { bindingParams: { ...PARAMS, refreshValue: undefined } },
-      { mode: "view" },
-      { disabled: true },
+      {},
+      { onRequestRefresh: "not a function" },
+      { mode: "view", onRequestRefresh: offer },
+      { disabled: true, onRequestRefresh: offer },
     ];
     for (const reading of readings) {
-      const view = await mount({ value: { lists: [], listsRead: "failed" }, ...reading });
-      try {
-        assert.equal(view.container.querySelector('[data-testid="list-picker-try-again"]'), null);
-        assert.deepEqual(view.writes, []);
-      } finally {
-        await view.unmount();
+      for (const listsRead of ["ok", "failed"]) {
+        const view = await mount({ value: { lists: [], listsRead }, ...reading });
+        try {
+          assert.equal(view.container.querySelector('[data-testid="list-picker-try-again"]'), null, JSON.stringify(reading));
+          assert.deepEqual(view.writes, []);
+        } finally {
+          await view.unmount();
+        }
       }
+    }
+  });
+
+  it("offers no Try again while there are lists to pick", async () => {
+    const view = await mount({ value: { lists: LISTS, listsRead: "ok" }, onRequestRefresh: async () => FAILED });
+    try {
+      assert.equal(view.container.querySelector('[data-testid="list-picker-try-again"]'), null);
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("a second press while a read is pending does nothing", async () => {
+    const pending = deferred();
+    let calls = 0;
+    const view = await mount({
+      value: { lists: [], listsRead: "failed" },
+      onRequestRefresh: () => {
+        calls += 1;
+        return pending.promise;
+      },
+    });
+    try {
+      const button = view.container.querySelector('[data-testid="list-picker-try-again"]');
+      // The same button pressed twice before the step draws again.
+      await act(async () => {
+        button.click();
+        button.click();
+      });
+      assert.equal(calls, 1);
+      await click(button);
+      assert.equal(calls, 1);
+      await act(async () => {
+        pending.resolve({ lists: LISTS, listsRead: "ok" });
+      });
+      assert.equal(calls, 1);
+      assert.equal(boxes(view.container).length, 3);
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("a ticked list the new read no longer offers is dropped and the pick without it is written", async () => {
+    let onRequestRefresh = async () => ({ lists: [LISTS[0], { id: "view-d", name: "Partners" }], listsRead: "ok" });
+    const view = await mount({ value: { lists: LISTS, listsRead: "ok" }, onRequestRefresh });
+    try {
+      await click(boxes(view.container)[0]);
+      await click(boxes(view.container)[1]);
+      assert.deepEqual(view.writes.at(-1), { listIds: ["view-a", "view-b"], listNames: ["Customers in Berlin", "Trade fair leads"] });
+      assert.equal(view.reports.at(-1), true);
+      // The step is drawn again with a failed read, then Try again reads anew.
+      await view.rerender({ value: { lists: [], listsRead: "failed" }, onRequestRefresh });
+      assert.equal(view.reports.at(-1), false);
+      await click(view.container.querySelector('[data-testid="list-picker-try-again"]'));
+      assert.deepEqual(view.writes.at(-1), { listIds: ["view-a"], listNames: ["Customers in Berlin"] });
+      assert.equal(view.writes.length, 3, "the drop is not written once");
+      assert.deepEqual(boxes(view.container).map((box) => box.checked), [true, false]);
+      assert.equal(view.reports.at(-1), true);
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("a read that ends after the step is gone sets nothing", async () => {
+    const pending = deferred();
+    const errors = [];
+    const original = console.error;
+    console.error = (...args) => void errors.push(args.join(" "));
+    try {
+      const onRequestRefresh = () => pending.promise;
+      const view = await mount({ value: { lists: LISTS, listsRead: "ok" }, onRequestRefresh });
+      await click(boxes(view.container)[1]);
+      await view.rerender({ value: { lists: [], listsRead: "failed" }, onRequestRefresh });
+      await click(view.container.querySelector('[data-testid="list-picker-try-again"]'));
+      const writesBefore = view.writes.length;
+      const reportsBefore = view.reports.length;
+      await view.unmount();
+      // A read that no longer offers the ticked list would drop it and write
+      // the pick without it, were the step still drawn.
+      await act(async () => {
+        pending.resolve({ lists: [LISTS[0]], listsRead: "ok" });
+      });
+      assert.equal(view.writes.length, writesBefore, "a write after the step is gone");
+      assert.equal(view.reports.length, reportsBefore, "a report after the step is gone");
+      assert.deepEqual(errors, []);
+    } finally {
+      console.error = original;
     }
   });
 
@@ -463,247 +631,5 @@ describe("the gate's answer is the host's lift of the list step's write", () => 
 
   it("the raw write, unlifted, is not an answer the generation accepts", () => {
     assert.equal(generationAcceptsScope(JSON.stringify({ listIds: ["view-a"], listNames: ["A"] })), false);
-  });
-
-  it("the Try again write names the value the branch maps to its refresh branch", () => {
-    assert.equal(branch.mapping[PARAMS.refreshValue], "refresh");
-    assert.equal(hostLiftListPicker({ listIds: [], listNames: [], refresh: PARAMS.refreshValue }, "x"), null,
-      "the refresh request lifts as a pick");
-    assert.equal(generationAcceptsScope(PARAMS.refreshValue), false);
-  });
-});
-
-// HOW TRY AGAIN ADVANCES THE STEP (round 5 finding: "the refresh edge after the
-// gate is unreachable ... never proves the flow advances").
-//
-// Try again does not advance the gate by a Continue, and it must not: nothing is
-// picked, so Continue stays unavailable. The host advances it. cinatra-ai/cinatra
-// #4772 reads the component's write with `listStepRefreshRequest` (a mid-run
-// `:list-picker` step and a nonblank `refresh`), sends
-// `buildListStepRefreshPayload(refresh)` at once as the step's answer, and the
-// server takes it only when it equals the refresh value the binding declared
-// (`params.refreshValue`, recorded with the pause), then resumes the gate with
-// exactly that value as its text (packages/agents/src/hitl-gate-submit.ts,
-// review-task-actions.ts). The fixtures below copy those readings; they are
-// documented copies, not imports, because an extension never imports the host.
-// This suite proves every link a package can hold: the declared value is the
-// value the host sends, the gate takes it as its answer, the branch maps it to a
-// branch that reads the CRM again, and that read returns to the SAME gate node
-// (the host keeps the step by the signed node id, so a copy of the gate would be
-// a new step).
-
-const PKG = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-const LIST_PICKER_BINDING = (PKG.cinatra.fieldRenderers ?? []).find(
-  (binding) => binding.id === "@cinatra-ai/email-outreach-agent:list-picker",
-);
-const HOST_REFRESH_KEY = "listStepRefresh";
-
-/** Copy of `isMidRunListStepGate` (hitl-gate-submit.ts); a setup gate's task id starts with "setup-". */
-const hostIsMidRunListStep = (xRenderer, reviewTaskId) =>
-  xRenderer.endsWith(":list-picker") && !reviewTaskId.startsWith("setup-");
-
-/** Copy of `listStepRefreshRequest` (hitl-gate-submit.ts): what the hosts read from the write. */
-function hostRefreshRequest(xRenderer, reviewTaskId, written) {
-  if (!hostIsMidRunListStep(xRenderer, reviewTaskId)) return null;
-  if (written === null || typeof written !== "object" || Array.isArray(written)) return null;
-  const refresh = written.refresh;
-  return typeof refresh === "string" && refresh.trim().length > 0 ? refresh : null;
-}
-
-/** Copy of `buildListStepRefreshPayload` (hitl-gate-submit.ts). */
-const hostRefreshPayload = (refresh) => ({
-  approved: true,
-  approvedAt: "2026-11-25T00:00:00.000Z",
-  userResponse: refresh,
-  [HOST_REFRESH_KEY]: refresh,
-});
-
-/**
- * Copy of the server's decision (review-task-actions.ts with
- * `listStepRefreshIsRequest`, `isListStepRefreshPayloadShape` and
- * `listStepRefreshAccepted`): the gate's resume text, or null when refused.
- */
-function hostServerResumeText({ xRenderer, reviewTaskId, gateFields, declared, payload }) {
-  if (!hostIsMidRunListStep(xRenderer, reviewTaskId)) return null;
-  if (gateFields.includes(HOST_REFRESH_KEY)) return null;
-  const allowed = new Set(["approved", "approvedAt", "userResponse", HOST_REFRESH_KEY]);
-  if (Object.keys(payload).some((key) => !allowed.has(key))) return null;
-  const requested = payload[HOST_REFRESH_KEY];
-  if (typeof requested !== "string" || requested.trim().length === 0 || payload.userResponse !== requested) return null;
-  if (typeof declared !== "string" || declared.trim().length === 0 || requested !== declared) return null;
-  return declared;
-}
-
-/** The flows that hold a node id among their `nodes`. */
-function flowsHolding(nodeId) {
-  const flows = [];
-  const walk = (node) => {
-    if (Array.isArray(node)) return node.forEach(walk);
-    if (node === null || typeof node !== "object") return;
-    if (node.component_type === "Flow" && Array.isArray(node.nodes)) {
-      if (node.nodes.some((ref) => ref?.$component_ref === nodeId)) flows.push(node);
-    }
-    Object.values(node).forEach(walk);
-  };
-  walk(OAS);
-  return flows;
-}
-
-/** How many nodes in the whole flow file carry an id. */
-function nodeCount(nodeId) {
-  let count = 0;
-  const walk = (node) => {
-    if (Array.isArray(node)) return node.forEach(walk);
-    if (node === null || typeof node !== "object") return;
-    if (node.id === nodeId && typeof node.component_type === "string") count += 1;
-    Object.values(node).forEach(walk);
-  };
-  walk(OAS);
-  return count;
-}
-
-describe("Try again advances the list step through the host's refresh", () => {
-  const nodes = nodesById();
-  const GATE = "recipients-scope_gate";
-  const BRANCH = "recipients-scope_branch";
-  const gate = nodes.get(GATE);
-  const branch = nodes.get(BRANCH);
-  const declared = LIST_PICKER_BINDING?.params?.refreshValue;
-  const reviewTaskId = "wayflow-task-1";
-  const gateFields = () => gate.outputs.map((output) => output.title);
-
-  it("the binding declares a refresh value where the host reads it (params.refreshValue)", () => {
-    assert.ok(LIST_PICKER_BINDING, "package.json declares no list-picker binding");
-    assert.equal(typeof declared, "string");
-    assert.ok(declared.trim().length > 0, "the declared refresh value is blank");
-    assert.ok(hostIsMidRunListStep(LIST_PICKER_BINDING.id, reviewTaskId), "the host does not read this binding as a list step");
-    assert.equal(gate.metadata.cinatra.inputRenderers.accountScope, LIST_PICKER_BINDING.id);
-  });
-
-  it("the server takes the host's refresh answer for the declared value and resumes the gate with it", () => {
-    const resume = hostServerResumeText({
-      xRenderer: LIST_PICKER_BINDING.id,
-      reviewTaskId,
-      gateFields: gateFields(),
-      declared,
-      payload: hostRefreshPayload(declared),
-    });
-    assert.equal(resume, declared);
-    // The gate's one output takes the resume text: a string, as the gate declares.
-    assert.deepEqual(gate.outputs, [{ title: "accountScope", type: "string" }]);
-    assert.equal(typeof resume, "string");
-    assert.equal(
-      hostServerResumeText({
-        xRenderer: LIST_PICKER_BINDING.id,
-        reviewTaskId,
-        gateFields: gateFields(),
-        declared,
-        payload: hostRefreshPayload(`${declared}-other`),
-      }),
-      null,
-      "the server takes a value the binding did not declare",
-    );
-  });
-
-  it("the gate's answer reaches the branch, which maps the declared value to a branch that is not the pick's", () => {
-    const [flow] = flowsHolding(GATE);
-    assert.ok(flow, "no flow holds the gate");
-    const feeds = flow.data_flow_connections.filter(
-      (edge) => edge.source_node.$component_ref === GATE && edge.destination_node.$component_ref === BRANCH,
-    );
-    assert.deepEqual(
-      feeds.map((edge) => [edge.source_output, edge.destination_input]),
-      [["accountScope", "accountScope"]],
-    );
-    assert.deepEqual(branch.inputs.map((input) => input.title), ["accountScope"]);
-    const taken = branch.mapping[declared];
-    assert.equal(typeof taken, "string", "the branch maps no branch for the declared value");
-    assert.notEqual(taken, "default");
-    assert.ok(branch.branches.includes(taken), `the branch declares no "${taken}" branch`);
-  });
-
-  it("that branch reads the CRM again and returns to the same gate node, with no other pause on the way", () => {
-    assert.equal(nodeCount(GATE), 1, "the flow file holds more than one node with the gate's id");
-    const flows = flowsHolding(GATE);
-    assert.equal(flows.length, 1, "more than one flow holds the gate");
-    const [flow] = flows;
-    const taken = branch.mapping[declared];
-    const edgesFrom = (id) => flow.control_flow_connections.filter((edge) => edge.from_node.$component_ref === id);
-    const first = edgesFrom(BRANCH).filter((edge) => edge.from_branch === taken);
-    assert.equal(first.length, 1, `the "${taken}" branch has ${first.length} edges`);
-    const path = [];
-    let at = first[0].to_node.$component_ref;
-    while (at !== GATE) {
-      assert.ok(!path.includes(at), `the refresh path loops without the gate at ${at}`);
-      path.push(at);
-      const node = nodes.get(at);
-      assert.ok(node, `the refresh path reaches ${at}, which is not a node`);
-      assert.ok(
-        !["InputMessageNode", "BranchingNode", "EndNode", "FlowNode"].includes(node.component_type),
-        `the refresh path reaches a ${node.component_type} at ${at}`,
-      );
-      const next = edgesFrom(at);
-      assert.equal(next.length, 1, `${at} has ${next.length} edges on the refresh path`);
-      at = next[0].to_node.$component_ref;
-    }
-    const reads = path.filter((id) => (nodes.get(id).metadata?.cinatra?.tools ?? []).includes("crm_list_search"));
-    assert.equal(reads.length, 1, "the refresh path does not read the CRM's lists once");
-    const hands = path.filter((id) => nodes.get(id).metadata?.cinatra?.purpose === "list-picker-gate-content");
-    assert.equal(hands.length, 1, "the refresh path does not hand the new lists to the picker");
-    assert.ok(path.indexOf(reads[0]) < path.indexOf(hands[0]), "the lists are handed before they are read");
-  });
-
-  it("a pick never takes the refresh branch", () => {
-    const pick = JSON.stringify({ type: "list", listIds: ["view-a"], listNames: ["A"], snapshotAt: "x" });
-    assert.equal(Object.hasOwn(branch.mapping, pick), false);
-  });
-
-  describe("the component's Try again, as the hosts read it", () => {
-    before(async () => {
-      const { JSDOM } = await import("jsdom");
-      dom = new JSDOM("<!doctype html><html><body></body></html>");
-      globalThis.window = dom.window;
-      globalThis.document = dom.window.document;
-      globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-      React = await import("react");
-      act = React.act;
-      ({ createRoot } = await import("react-dom/client"));
-      Renderer = (await import(ENTRY_URL.href)).default;
-    });
-
-    after(() => {
-      delete globalThis.window;
-      delete globalThis.document;
-      delete globalThis.IS_REACT_ACT_ENVIRONMENT;
-      dom?.window.close();
-    });
-
-    it("a press with the declared params writes what the hosts send as the declared refresh, and Continue stays unavailable", async () => {
-      for (const listsRead of ["ok", "failed"]) {
-        const view = await mount({ value: { lists: [], listsRead }, bindingParams: LIST_PICKER_BINDING.params });
-        try {
-          const button = view.container.querySelector('[data-testid="list-picker-try-again"]');
-          assert.ok(button, `${listsRead}: no Try again`);
-          assert.equal(button.getAttribute("type"), "button", "Try again would submit a form");
-          await click(button);
-          assert.equal(view.writes.length, 1, `${listsRead}: one press writes ${view.writes.length} times`);
-          const refresh = hostRefreshRequest(LIST_PICKER_BINDING.id, reviewTaskId, view.writes[0]);
-          assert.equal(refresh, declared, `${listsRead}: the hosts read no refresh of the declared value`);
-          const resume = hostServerResumeText({
-            xRenderer: LIST_PICKER_BINDING.id,
-            reviewTaskId,
-            gateFields: gateFields(),
-            declared,
-            payload: hostRefreshPayload(refresh),
-          });
-          assert.equal(branch.branches.includes(branch.mapping[resume]), true, `${listsRead}: the resume text takes no branch`);
-          assert.notEqual(branch.mapping[resume], "default");
-          assert.equal(hostLiftListPicker(view.writes[0], "x"), null, `${listsRead}: the press lifts as a pick`);
-          assert.deepEqual(view.reports, [false], `${listsRead}: Continue becomes available`);
-        } finally {
-          await view.unmount();
-        }
-      }
-    });
   });
 });
