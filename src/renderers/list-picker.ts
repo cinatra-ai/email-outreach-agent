@@ -48,7 +48,10 @@ import { createElement, useEffect, useRef, useState, type ReactNode } from "reac
 // malformed result draws the failed reading. A second press while one read is
 // pending does nothing, and a read that ends after the step is gone, or after
 // it was locked (disabled or drawn read-only), sets nothing and writes nothing.
-// After a new read the step accepts, the pick is the ticked lists it still
+// A new read that failed (or was rejected or malformed) changes nothing about
+// the pick: nothing is written, the ticks stay for the next read that
+// succeeds, and the step reports its value unsendable while it shows the
+// failed reading. After a new read that succeeded, the pick is the ticked lists it still
 // offers, in their order, with the names it gives them; when that pick differs
 // from the pick last written (a list dropped or renamed), it is written once as
 // an ordinary pick change, else nothing is written. The binding's
@@ -370,6 +373,12 @@ export default function ListPickerRenderer(props: ListPickerProps) {
     }
     setReread({ content: next });
     setReading(false);
+    // Only a read that succeeded says which lists exist. A failed, rejected or
+    // malformed read changes nothing about the pick: nothing is written and the
+    // ticked lists stay for the next read that succeeds. While it shows, the
+    // step offers no row and reports its value unsendable (design I.1: the
+    // Continue stays unavailable), so a pick the person cannot see is never sent.
+    if (!readSucceeded(next)) return;
     // The pick as the new read names it: the ticked lists it still offers, in
     // their order, with the names it gives them. A ticked list it no longer
     // offers is dropped. When that pick differs in any way from the pick last

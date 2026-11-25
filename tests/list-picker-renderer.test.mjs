@@ -412,6 +412,61 @@ describe("the list step, mounted", () => {
     }
   });
 
+  it("a failed, rejected or malformed new read keeps the pick, writes nothing and holds Continue; a later ok read reconciles", async () => {
+    const failures = {
+      failed: () => Promise.resolve(FAILED),
+      rejected: () => Promise.reject(new Error("no read")),
+      malformed: () => Promise.resolve({ lists: LISTS }),
+    };
+    for (const [label, fail] of Object.entries(failures)) {
+      for (const [ending, okRead, expected] of [
+        ["still offered", { lists: LISTS, listsRead: "ok" }, []],
+        ["gone", { lists: [LISTS[0]], listsRead: "ok" }, [{ listIds: [], listNames: [] }]],
+      ]) {
+        const reads = [fail, () => Promise.resolve(okRead)];
+        const onRequestRefresh = () => reads.shift()();
+        const view = await mount({ value: { lists: LISTS, listsRead: "ok" }, onRequestRefresh });
+        try {
+          await click(boxes(view.container)[1]);
+          assert.deepEqual(view.writes, [{ listIds: ["view-b"], listNames: ["Trade fair leads"] }]);
+          await view.rerender({ value: { lists: [], listsRead: "failed" }, onRequestRefresh });
+          await click(view.container.querySelector('[data-testid="list-picker-try-again"]'));
+          assert.equal(view.writes.length, 1, `${label}: the failed read wrote ${JSON.stringify(view.writes.slice(1))}`);
+          assert.equal(view.reports.at(-1), false, `${label}: Continue is available on a failed reading`);
+          const alert = view.container.querySelector('[role="alert"]');
+          assert.ok(alert, `${label}: no failed reading`);
+          assert.ok(alert.querySelector('[data-testid="list-picker-try-again"]'), `${label}: no Try again`);
+          await click(alert.querySelector('[data-testid="list-picker-try-again"]'));
+          assert.deepEqual(view.writes.slice(1), expected, `${label}, ${ending}: the writes after an ok read`);
+          if (ending === "still offered") {
+            assert.deepEqual(boxes(view.container).map((box) => box.checked), [false, true, false], `${label}: the pick is lost`);
+            assert.equal(view.reports.at(-1), true, `${label}: Continue stays unavailable with a pick`);
+          } else {
+            assert.deepEqual(boxes(view.container).map((box) => box.checked), [false]);
+            assert.equal(view.reports.at(-1), false);
+          }
+        } finally {
+          await view.unmount();
+        }
+      }
+    }
+  });
+
+  it("a failed value drawn on a step that holds a pick never clears it", async () => {
+    const view = await mount({ value: { lists: LISTS, listsRead: "ok" } });
+    try {
+      await click(boxes(view.container)[2]);
+      await view.rerender({ value: { lists: [], listsRead: "failed" } });
+      assert.equal(view.reports.at(-1), false);
+      await view.rerender({ value: { lists: LISTS, listsRead: "ok" } });
+      assert.deepEqual(view.writes, [{ listIds: ["view-c"], listNames: ["Newsletter"] }]);
+      assert.deepEqual(boxes(view.container).map((box) => box.checked), [false, false, true]);
+      assert.equal(view.reports.at(-1), true);
+    } finally {
+      await view.unmount();
+    }
+  });
+
   it("a read that ends after the step is gone sets nothing", async () => {
     const pending = deferred();
     const errors = [];
