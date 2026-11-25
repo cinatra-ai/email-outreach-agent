@@ -37,6 +37,7 @@ import {
   LIST_PATH,
   ROOT,
   checkFlowText,
+  danglingNames,
   generateCopy,
   generateFlow,
   generateHoists,
@@ -47,6 +48,7 @@ import {
   loadChild,
   loadList,
   serialize,
+  templateReading,
   writeCopies,
 } from "../scripts/embedded-copies.mjs";
 
@@ -695,48 +697,99 @@ function templated(text, kind = "PluginTemplateNode", field = "template") {
   node[keys[keys.length - 1]] = text;
   return source;
 }
-const findings = (text, kind, field) => {
-  try {
-    generateCopy(templated(text, kind, field), group([]));
-    return [];
-  } catch (error) {
-    return [...error.message.matchAll(/p-tpl renders (\S+?),/g)].map((m) => m[1]);
-  }
+/** The names a template reads that are no inputs of its step: generation must refuse it for those alone. */
+const rendersOf = (text, kind, field) => {
+  let got = null;
+  assert.throws(
+    () => generateCopy(templated(text, kind, field), group([])),
+    (error) => {
+      assert.ok(!error.message.includes("not supported"), `refused as unsupported: ${error.message}`);
+      got = [...error.message.matchAll(/p-tpl renders (\S+?),/g)].map((m) => m[1]);
+      return got.length > 0;
+    },
+    text,
+  );
+  return got;
 };
+/** A template whose names are all inputs of its step: generation succeeds and the copy names nothing it lacks. */
+const accepts = (text, kind, field) => {
+  const made = generateCopy(templated(text, kind, field), group([]));
+  assert.deepEqual(danglingNames(made), [], text);
+};
+/** A template the generator does not read: generation refuses it, naming the step and the construct. */
+const unsupported = (text, construct) =>
+  refused(
+    () => generateCopy(templated(text), group([])),
+    "org/child",
+    "p-tpl uses a template construct not supported by the copy generator:",
+    construct,
+  );
 
-test("(3089) the names a template reads through if, for, filters, filter arguments and attributes are its inputs", () => {
-  assert.deepEqual(findings("{% if a and (a|length > 0) %}x{% else %}y{% endif %}"), []);
-  assert.deepEqual(findings("{% if m %}x{% endif %}"), ["m"]);
-  assert.deepEqual(findings("{% if a %}{% elif m == 'v' %}{% endif %}"), ["m"]);
-  assert.deepEqual(findings("{% for i in ys %}{{ i }}{% endfor %}"), ["ys"]);
-  assert.deepEqual(findings("{{ y | tojson }}"), ["y"]);
-  assert.deepEqual(findings("{{ z.attr }}{{ a['k'] }}{{ a[w] }}"), ["z", "w"]);
-  assert.deepEqual(findings("{{ a | default(w) }}"), ["w"]);
-  assert.deepEqual(findings("{{ a if c else d }}"), ["c", "d"]);
-  assert.deepEqual(findings("{%- if m -%}x{%- endif -%}{{- n -}}"), ["m", "n"]);
+test("(3089) the names a template reads through if, elif, filters, tests and attributes are its inputs", () => {
+  assert.deepEqual(rendersOf("{% if m %}x{% endif %}"), ["m"]);
+  assert.deepEqual(rendersOf("{% if a %}{% elif m == 'v' %}{% else %}{% endif %}"), ["m"]);
+  assert.deepEqual(rendersOf("{{ y | tojson }}"), ["y"]);
+  assert.deepEqual(rendersOf("{{ z.attr }}{{ a['k'] }}{{ a[w] }}"), ["z", "w"]);
+  assert.deepEqual(rendersOf("{% if m and (m|length > 0) %}{% endif %}"), ["m"]);
+  assert.deepEqual(rendersOf("{% if m is defined or n is not none %}{% endif %}"), ["m", "n"]);
+  assert.deepEqual(rendersOf("{% if 'x' in m %}{% endif %}"), ["m"]);
   // pyagentspec reads a bare placeholder inside a comment (the input-hint sentinel) as an input.
-  assert.deepEqual(findings("{# pyagentspec-input-hint: {{ hint }} #}{{ a | tojson }}"), ["hint"]);
+  assert.deepEqual(rendersOf("{# pyagentspec-input-hint: {{ hint }} #}{{ a | tojson }}"), ["hint"]);
   // Every template-bearing text of the step counts, wherever it sits.
-  assert.deepEqual(findings("{{ q }}", "OutputMessageNode", "message"), ["q"]);
-  assert.deepEqual(findings("Hello {{ q }}", "ApiNode", "data.input.text"), ["q"]);
-  assert.deepEqual(findings("{{ q }}", "BranchingNode", "mapping.0"), ["q"]);
-  assert.deepEqual(findings("{% if q %}{% endif %}", "PluginRegexNode", "metadata.note"), ["q"]);
+  assert.deepEqual(rendersOf("{{ q }}", "OutputMessageNode", "message"), ["q"]);
+  assert.deepEqual(rendersOf("Hello {{ q }}", "ApiNode", "data.input.text"), ["q"]);
+  assert.deepEqual(rendersOf("{{ q }}", "BranchingNode", "mapping.0"), ["q"]);
+  assert.deepEqual(rendersOf("{% if q %}{% endif %}", "PluginRegexNode", "metadata.note"), ["q"]);
 });
 
-test("(3089) set locals, loop variables, literals, tests, builtins and the base url are not false findings", () => {
-  assert.deepEqual(findings("{% for i in xs %}{{ i.name }}{{ loop.index }}{% endfor %}"), []);
-  assert.deepEqual(findings("{% for k, v in xs %}{{ k }}={{ v }}{% endfor %}"), []);
-  assert.deepEqual(findings("{% set s = a | upper %}{{ s }}"), []);
-  assert.deepEqual(findings("{% set s %}{{ a }}{% endset %}{{ s }}"), []);
-  assert.deepEqual(findings("{{ 'text' }}{{ 1 }}{{ true }}{{ none }}{% if a is defined %}{% endif %}{% if a is not none %}{% endif %}"), []);
-  assert.deepEqual(findings("{% for n in range(3) %}{{ n }}{% endfor %}{{ CINATRA_BASE_URL }}"), []);
-  assert.deepEqual(findings("{{ a | replace('x', 'y') | join(', ') }}{{ a | indent(width=2) }}"), []);
-  // A local is a local only after it is set, and a loop variable only inside its loop.
-  assert.deepEqual(findings("{{ s }}{% set s = a %}"), ["s"]);
-  assert.deepEqual(findings("{% for i in xs %}{% endfor %}{{ i }}"), ["i"]);
+test("(3089) a template that reads only its inputs through the allowed constructs is generated", () => {
+  accepts("{% if a and (a|length > 0) %}present{% else %}missing{% endif %}");
+  accepts("{{ 'text' }}{{ 1 }}{{ true }}{{ none }}{{ False }}");
+  accepts("{% if a is defined %}{% endif %}{% if a is not defined %}{% endif %}{% if a is none %}{% endif %}{% if a is not none %}{% endif %}");
+  accepts("{% if a != 'x' and not (a == \"y\") or a.n >= 1 or a < 2 %}{% elif 'z' in xs %}{% endif %}");
+  accepts("{{ a.b['c'] | tojson }}{{ xs | length }}{{ CINATRA_BASE_URL }}");
+  accepts("{# pyagentspec-input-hint: {{ a }} #}{{ a | tojson }}");
 });
 
-test("(3089) a template tag the generator does not read is refused, not passed", () => {
-  refused(() => generateCopy(templated("{% macro m() %}{% endmacro %}"), group([])), "p-tpl uses the tag 'macro'");
-  refused(() => generateCopy(templated("{% include 'x' %}"), group([])), "p-tpl uses the tag 'include'");
+test("(3089) every template construct outside the allowed set is refused, naming it", () => {
+  unsupported("{% set ns = namespace() %}{% set ns.missing = a %}{{ missing }}", "tag 'set'");
+  unsupported("{% set s %}{{ a }}{% endset %}", "tag 'set'");
+  unsupported("{% for i in xs %}{{ i }}{% endfor %}", "tag 'for'");
+  for (const tag of ["macro m()", "call m()", "include 'x'", "import 'x' as y", "extends 'x'", "block b", "with", "filter upper", "raw", "break", "continue"]) {
+    unsupported(`{% ${tag} %}`, `tag '${tag.split(" ")[0]}'`);
+  }
+  unsupported("{{ namespace() }}", "call of 'namespace'");
+  unsupported("{{ range(3) }}", "call of 'range'");
+  unsupported("{{ a | upper }}", "filter 'upper'");
+  unsupported("{{ a | default('x') }}", "filter 'default'");
+  unsupported("{{ a | tojson(indent=2) }}", "call of 'tojson'");
+  unsupported("{{ a is odd }}", "test 'odd'");
+  unsupported("{{ a if a else xs }}", "'if'");
+  unsupported("{{ a + 1 }}", "'+'");
+  unsupported("{{ a ~ 'x' }}", "'~'");
+  unsupported("{{ {'k': a} }}", "'{'");
+  unsupported("{%- if a -%}{% endif %}", "whitespace control");
+  unsupported("{{ a ? 1 : 2 }}", "an expression it cannot read");
+});
+
+test("(3089) every step of every pinned child and of the parent uses only the allowed template constructs", () => {
+  const flows = [
+    ["cinatra/oas.json", JSON.parse(readFileSync(path.join(ROOT, "cinatra", "oas.json"), "utf8"))],
+    ...loadList().map((g) => [g.snapshot, loadChild(g)]),
+    ["delivery at 0505839", JSON.parse(fixture("email-delivery-agent-0505839-oas.json"))],
+  ];
+  let read = 0;
+  const visit = (where, flow) => {
+    for (const step of Object.values(flow.$referenced_components ?? {})) {
+      if (step.component_type === "Flow") {
+        visit(`${where} > ${step.id}`, step);
+        continue;
+      }
+      const { problems } = templateReading(step);
+      assert.deepEqual(problems, [], `${where} ${step.id}`);
+      read += 1;
+    }
+  };
+  for (const [where, flow] of flows) visit(where, flow);
+  assert.ok(read > 50, `only ${read} steps were read`);
 });

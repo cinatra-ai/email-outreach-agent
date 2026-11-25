@@ -489,107 +489,82 @@ const TEMPLATED = Object.freeze(["ApiNode", "OutputMessageNode", "PluginTemplate
 
 // pyagentspec's placeholder regex (pyagentspec/templating TEMPLATE_PLACEHOLDER_REGEXP), as the host mirrors it in
 // cinatra packages/agents/src/validate-oas-runtime-invariants.ts (PLACEHOLDER_REGEX), with the host's filter for
-// the all-caps names the loader substitutes from the environment (ENV_VAR_PLACEHOLDER). It is applied to comments:
-// a {# pyagentspec-input-hint: {{ name }} #} sentinel names an input. Outside comments the Jinja reading below
-// finds every name it finds, and more, and also knows set locals and loop variables, which it does not.
+// the all-caps names the loader substitutes from the environment (ENV_VAR_PLACEHOLDER). Applied to comments: a
+// {# pyagentspec-input-hint: {{ name }} #} sentinel names an input.
 const PLACEHOLDER = /\{\{\s*(\w+)\s*\}\}/g;
 const ENV_VAR = /^[A-Z_][A-Z0-9_]*$/;
 // The template tokenizer of the delivery pack's renderTemplate (email-delivery-agent
-// tests/lifecycle-d-w8-flow.test.mjs): comments, tags and outputs, with Jinja's - whitespace marks taken off.
+// tests/lifecycle-d-w8-flow.test.mjs): comments, tags and outputs.
 const TEMPLATE_TOKEN = /\{#[\s\S]*?#\}|\{%([\s\S]*?)%\}|\{\{([\s\S]*?)\}\}/g;
-// The pieces of a Jinja expression: a quoted text, a number, a name, or an operator or bracket.
-const EXPRESSION_PIECE = /\s*('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|\d+(?:\.\d+)?|[A-Za-z_]\w*|==|!=|<=|>=|\*\*|\/\/|[-+*/%~<>=|.,:()[\]{}])/y;
-const JINJA_WORDS = new Set(["and", "or", "not", "in", "is", "if", "else", "true", "false", "none", "True", "False", "None", "recursive"]);
-// Jinja's default globals, and the loop object a for block defines.
-const JINJA_GLOBALS = new Set(["range", "lipsum", "dict", "cycler", "joiner", "namespace"]);
 
-/** The names a Jinja expression reads: not an attribute, a filter or test name, a keyword argument, a word or a literal. */
-function expressionNames(expression, bound, found) {
+// The template constructs the copy generator reads: exactly those the pinned children and the outreach flow use,
+// plus the tests named below. Anything else is refused, so a flow that needs more extends this list deliberately.
+const PIECE = /\s*('[^'\\]*'|"[^"\\]*"|\d+|[A-Za-z_]\w*|==|!=|<=|>=|[<>.|()[\]])/y;
+const WORDS = new Set(["and", "or", "not", "in", "is", "true", "false", "none", "True", "False", "None"]);
+const FILTERS = new Set(["tojson", "length"]);
+const TESTS = new Set(["defined", "none"]);
+
+/** The names one expression reads, or the construct in it the generator does not read. */
+function readExpression(expression, found) {
   const pieces = [];
-  EXPRESSION_PIECE.lastIndex = 0;
+  PIECE.lastIndex = 0;
   let end = 0;
-  for (let m; (m = EXPRESSION_PIECE.exec(expression)); end = EXPRESSION_PIECE.lastIndex) pieces.push(m[1]);
-  if (expression.slice(end).trim() !== "") found.problems.push(`an expression it does not read: ${expression.trim()}`);
+  for (let m; (m = PIECE.exec(expression)); end = PIECE.lastIndex) pieces.push(m[1]);
+  const rest = expression.slice(end).trim();
+  if (rest !== "") {
+    const piece = /^\S/.exec(rest)[0];
+    found.problems.push(/[-+*/%~{},:=!]/.test(piece) ? `'${piece}'` : `an expression it cannot read: ${expression.trim()}`);
+  }
   pieces.forEach((piece, at) => {
-    if (!/^[A-Za-z_]/.test(piece) || JINJA_WORDS.has(piece) || JINJA_GLOBALS.has(piece)) return;
+    if (!/^[A-Za-z_]/.test(piece)) return;
     const before = pieces[at - 1];
-    if (before === "." || before === "|" || before === "is" || (before === "not" && pieces[at - 2] === "is")) return;
-    if (pieces[at + 1] === "=") return;
-    if (!bound.some((scope) => scope.has(piece))) found.names.add(piece);
+    if (before === "|" && !FILTERS.has(piece)) found.problems.push(`filter '${piece}'`);
+    else if (pieces[at + 1] === "(" && !WORDS.has(piece)) found.problems.push(`call of '${piece}'`);
+    else if (before === "." || before === "|") return;
+    else if (before === "is" || (before === "not" && pieces[at - 2] === "is")) {
+      if (piece !== "not" && !TESTS.has(piece)) found.problems.push(`test '${piece}'`);
+    } else if (piece === "if" || piece === "else") found.problems.push(`'${piece}'`);
+    else if (!WORDS.has(piece)) found.names.add(piece);
   });
 }
 
-/** The names bound by a set or for target ("x", "k, v", "(k, v)"). */
-const targetNames = (target) => (target.match(/[A-Za-z_]\w*/g) ?? []);
-
-/**
- * The names one template text reads: pyagentspec's bare placeholders inside comments, and the names Jinja
- * reads outside comments through outputs and the tags if, elif, for and set, with set locals bound from their
- * set on and loop variables (and loop) inside their loop. A tag outside that set is a problem, not a pass.
- */
-function templateNames(text, found) {
-  const bound = [new Set()];
-  const blocks = [];
+/** The names one template text reads: comments' bare placeholders, outputs, and the if, elif, else and endif tags. */
+function readTemplate(text, found) {
   for (const m of text.matchAll(TEMPLATE_TOKEN)) {
     if (m[0].startsWith("{#")) {
       for (const hint of m[0].matchAll(PLACEHOLDER)) if (!ENV_VAR.test(hint[1])) found.names.add(hint[1]);
       continue;
     }
-    const body = (m[1] ?? m[2]).replace(/^-/, "").replace(/-$/, "").trim();
-    if (m[2] !== undefined) {
-      if (!ENV_VAR.test(body)) expressionNames(body, bound, found);
+    const body = m[1] ?? m[2];
+    if (/^-|-$/.test(body)) {
+      found.problems.push("whitespace control");
       continue;
     }
-    const [, tag = "", rest = ""] = /^(\w*)\s*([\s\S]*)$/.exec(body);
-    if (tag === "if" || tag === "elif") expressionNames(rest, bound, found);
-    else if (tag === "else" || tag === "endif") continue;
-    else if (tag === "for") {
-      const loop = /^([\s\S]+?)\s+in\s+([\s\S]+?)(?:\s+recursive)?$/.exec(rest);
-      if (!loop) {
-        found.problems.push(`a for tag it does not read: ${body}`);
-        continue;
-      }
-      const [iterable, condition] = loop[2].split(/\s+if\s+/);
-      expressionNames(iterable, bound, found);
-      bound.push(new Set([...targetNames(loop[1]), "loop"]));
-      if (condition !== undefined) expressionNames(condition, bound, found);
-      blocks.push("for");
-    } else if (tag === "endfor") {
-      if (blocks.pop() === "for") bound.pop();
-      else found.problems.push("an endfor without its for");
-    } else if (tag === "set") {
-      const assignment = /^([\s\S]+?)\s*=\s*([\s\S]+)$/.exec(rest);
-      if (assignment) {
-        expressionNames(assignment[2], bound, found);
-        for (const name of targetNames(assignment[1])) bound[bound.length - 1].add(name);
-      } else {
-        for (const name of targetNames(rest)) bound[bound.length - 1].add(name);
-        blocks.push("set");
-      }
-    } else if (tag === "endset") {
-      if (blocks.pop() !== "set") found.problems.push("an endset without its set");
-    } else {
-      found.problems.push(`the tag '${tag}'`);
+    if (m[2] !== undefined) {
+      if (!ENV_VAR.test(body.trim())) readExpression(body, found);
+      continue;
     }
+    const [, tag, rest] = /^\s*(\w*)([\s\S]*)$/.exec(body);
+    if (tag === "if" || tag === "elif") readExpression(rest, found);
+    else if ((tag !== "else" && tag !== "endif") || rest.trim() !== "") found.problems.push(`tag '${tag}'`);
   }
 }
 
 /**
- * The names a step renders and the template constructs it uses that are not read: every text anywhere in the
- * step's own definition (its data, message, template, mappings, metadata, nested objects and lists), its inputs
- * and outputs declarations and its $component_ref values aside.
+ * What a step's templates read: `names`, the names they render, and `problems`, the constructs the generator
+ * does not read. Every text anywhere in the step's own definition counts (its data, message, template, mappings,
+ * metadata, nested objects and lists), its inputs and outputs declarations and its $component_ref values aside.
  */
-function rendered(step) {
+export function templateReading(step) {
   const found = { names: new Set(), problems: [] };
   const walk = (value, top) => {
     if (typeof value === "string") {
-      if (/\{\{|\{%|\{#/.test(value)) templateNames(value, found);
+      if (/\{\{|\{%|\{#/.test(value)) readTemplate(value, found);
       return;
     }
     if (value === null || typeof value !== "object") return;
     for (const [key, inner] of Object.entries(value)) {
-      if (top && (key === "inputs" || key === "outputs")) continue;
-      if (key === "$component_ref") continue;
+      if ((top && (key === "inputs" || key === "outputs")) || key === "$component_ref") continue;
       walk(inner, false);
     }
   };
@@ -597,9 +572,9 @@ function rendered(step) {
   return found;
 }
 
-/** The names a step renders (see rendered). */
+/** The names a step renders (see templateReading). */
 function renderedNames(step) {
-  return rendered(step).names;
+  return templateReading(step).names;
 }
 
 /**
@@ -620,9 +595,9 @@ function stepDangling(step) {
   for (const row of step.metadata?.cinatra?.publishRows ?? []) {
     if (!inputs.has(row.input)) found.push(`${step.id} row ${row.label} names input ${row.input}`);
   }
-  const { names, problems } = rendered(step);
+  const { names, problems } = templateReading(step);
   for (const name of names) if (!inputs.has(name)) found.push(`${step.id} renders ${name}, which is no input of it`);
-  for (const problem of problems) found.push(`${step.id} uses ${problem}, which the generator does not read`);
+  for (const problem of problems) found.push(`${step.id} uses a template construct not supported by the copy generator: ${problem}`);
   return found;
 }
 
