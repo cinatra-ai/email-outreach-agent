@@ -467,6 +467,127 @@ describe("the list step, mounted", () => {
     }
   });
 
+  it("a new value from the host that no longer offers a ticked list drops it and writes once, and only once", async () => {
+    const view = await mount({ value: { lists: LISTS, listsRead: "ok" } });
+    try {
+      await click(boxes(view.container)[0]);
+      await click(boxes(view.container)[1]);
+      const before = view.writes.length;
+      await view.rerender({ value: { lists: [LISTS[0]], listsRead: "ok" } });
+      assert.deepEqual(view.writes.slice(before), [{ listIds: ["view-a"], listNames: ["Customers in Berlin"] }]);
+      assert.deepEqual(boxes(view.container).map((box) => box.checked), [true]);
+      assert.equal(view.reports.at(-1), true, "one pick meets the floor of one");
+      // The host draws the step again with the same value (a new object): nothing more.
+      await view.rerender({ value: { lists: [{ ...LISTS[0] }], listsRead: "ok" } });
+      await view.rerender({ value: JSON.stringify({ lists: [LISTS[0]], listsRead: "ok" }) });
+      assert.equal(view.writes.length, before + 1, "a second write for the same value");
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("a new value that drops a ticked list under a floor of two reports the value unsendable", async () => {
+    const view = await mount({ value: { lists: LISTS, listsRead: "ok" }, bindingParams: { ...PARAMS, minSelected: 2 } });
+    try {
+      await click(boxes(view.container)[0]);
+      await click(boxes(view.container)[1]);
+      assert.equal(view.reports.at(-1), true);
+      await view.rerender({ value: { lists: [LISTS[0], LISTS[2]], listsRead: "ok" }, bindingParams: { ...PARAMS, minSelected: 2 } });
+      assert.deepEqual(view.writes.at(-1), { listIds: ["view-a"], listNames: ["Customers in Berlin"] });
+      assert.equal(view.reports.at(-1), false);
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("a new value that renames a ticked list writes the new name once", async () => {
+    const view = await mount({ value: { lists: LISTS, listsRead: "ok" } });
+    try {
+      await click(boxes(view.container)[0]);
+      const before = view.writes.length;
+      const renamed = [{ id: "view-a", name: "Berlin customers" }, LISTS[1], LISTS[2]];
+      await view.rerender({ value: { lists: renamed, listsRead: "ok" } });
+      await view.rerender({ value: { lists: renamed, listsRead: "ok" } });
+      assert.deepEqual(view.writes.slice(before), [{ listIds: ["view-a"], listNames: ["Berlin customers"] }]);
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("a new value on a read-only or disabled step writes nothing, and a failed value keeps the pick", async () => {
+    for (const lock of [{ mode: "view" }, { disabled: true }]) {
+      const view = await mount({ value: { lists: LISTS, listsRead: "ok" } });
+      try {
+        await click(boxes(view.container)[0]);
+        await click(boxes(view.container)[1]);
+        const before = view.writes.length;
+        await view.rerender({ value: { lists: [LISTS[0]], listsRead: "ok" }, ...lock });
+        assert.equal(view.writes.length, before, `${JSON.stringify(lock)}: a write on a locked step`);
+      } finally {
+        await view.unmount();
+      }
+    }
+    const view = await mount({ value: { lists: LISTS, listsRead: "ok" } });
+    try {
+      await click(boxes(view.container)[0]);
+      const before = view.writes.length;
+      await view.rerender({ value: { lists: [], listsRead: "failed" } });
+      await view.rerender({ value: { lists: LISTS } });
+      assert.equal(view.writes.length, before, "a failed value wrote");
+      await view.rerender({ value: { lists: LISTS, listsRead: "ok" } });
+      assert.equal(view.writes.length, before, "an ok value that still offers the pick wrote");
+      assert.deepEqual(boxes(view.container).map((box) => box.checked), [true, false, false]);
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("a step that becomes writable again reconciles a pick that a new value made stale while it was locked", async () => {
+    const view = await mount({ value: { lists: LISTS, listsRead: "ok" } });
+    try {
+      await click(boxes(view.container)[0]);
+      await click(boxes(view.container)[1]);
+      const before = view.writes.length;
+      await view.rerender({ value: { lists: [LISTS[1]], listsRead: "ok" }, disabled: true });
+      assert.equal(view.writes.length, before);
+      await view.rerender({ value: { lists: [LISTS[1]], listsRead: "ok" } });
+      assert.deepEqual(view.writes.slice(before), [{ listIds: ["view-b"], listNames: ["Trade fair leads"] }]);
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("the first value writes nothing: no pick is held yet", async () => {
+    for (const value of [{ lists: LISTS, listsRead: "ok" }, { lists: [], listsRead: "ok" }, FAILED]) {
+      const view = await mount({ value });
+      try {
+        assert.deepEqual(view.writes, []);
+        assert.deepEqual(view.reports, [false]);
+      } finally {
+        await view.unmount();
+      }
+    }
+  });
+
+  it("a new value from the host replaces a read made on Try again", async () => {
+    const onRequestRefresh = async () => ({ lists: LISTS, listsRead: "ok" });
+    const view = await mount({ value: FAILED, onRequestRefresh });
+    try {
+      await click(view.container.querySelector('[data-testid="list-picker-try-again"]'));
+      await click(boxes(view.container)[0]);
+      await click(boxes(view.container)[2]);
+      const before = view.writes.length;
+      await view.rerender({ value: { lists: [LISTS[2]], listsRead: "ok" }, onRequestRefresh });
+      assert.deepEqual(
+        [...view.container.querySelectorAll('[data-testid="list-picker-row-title"]')].map((t) => t.textContent),
+        ["Newsletter"],
+      );
+      assert.deepEqual(view.writes.slice(before), [{ listIds: ["view-c"], listNames: ["Newsletter"] }]);
+    } finally {
+      await view.unmount();
+    }
+  });
+
   it("a read that ends after the step is gone sets nothing", async () => {
     const pending = deferred();
     const errors = [];
@@ -747,17 +868,25 @@ describe("the list step, mounted", () => {
   });
 });
 
-// THE HOST'S LIFT, REPRODUCED (finding: "the renderer emits { listIds, listNames }
-// and not the gate's string scope with type: "list"").
+// THE HOST'S LIFT, AS A COPY OF ITS CONTRACT (finding: "the renderer emits
+// { listIds, listNames } and not the gate's string scope with type: "list"").
 //
-// The component writes `{ listIds, listNames }`; the gate's answer is what the
-// host makes of it on Continue. This fixture copies the several-picks branch of
-// `liftRendererApprovalNote` from cinatra-ai/cinatra
-// packages/agents/src/hitl-gate-submit.ts (with its `isUsableListId`), and the
-// resume-text choice of packages/agents/src/review-task-actions.ts (the note is
-// the resume text: the list step's lift drops any `userResponse`). Keep it in
-// step with those files; it is a documented copy, not an import, because an
-// extension never imports the host.
+// What this proves, and what it does not. The component writes
+// `{ listIds, listNames }`; the gate's answer is what the host makes of it on
+// Continue. This package cannot import the host (an extension never imports
+// it), so it cannot test against the host's real code. The fixture below is a
+// hand copy of the several-picks branch of `liftRendererApprovalNote` in
+// cinatra-ai/cinatra packages/agents/src/hitl-gate-submit.ts (with its
+// `isUsableListId`) and of the resume-text choice in
+// packages/agents/src/review-task-actions.ts (the note is the resume text),
+// as they read at cinatra-ai/cinatra main 074655082f6f (hitl-gate-submit.ts last
+// changed in fa2332384). It proves that this component's writes fit that
+// copy, nothing more: a later change in the host is not seen here. The real
+// path is tested in the host: cinatra-ai/cinatra#4797's
+// packages/agents/src/__tests__/agentic-run-panel.list-step-refresh-3562.test.tsx
+// ("the prop reaches a pack-shipped component through the registry"), with the
+// stepper and standalone-card tests beside it, resolves a pack-shipped
+// component through the real field renderer registry.
 function hostLiftListPicker(buffered, now) {
   const isUsableListId = (id) => typeof id === "string" && id.trim().length > 0;
   const ticked = buffered.listIds;

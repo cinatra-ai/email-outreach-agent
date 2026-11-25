@@ -48,13 +48,17 @@ import { createElement, useEffect, useRef, useState, type ReactNode } from "reac
 // malformed result draws the failed reading. A second press while one read is
 // pending does nothing, and a read that ends after the step is gone, or after
 // it was locked (disabled or drawn read-only), sets nothing and writes nothing.
-// A new read that failed (or was rejected or malformed) changes nothing about
-// the pick: nothing is written, the ticks stay for the next read that
-// succeeds, and the step reports its value unsendable while it shows the
-// failed reading. After a new read that succeeded, the pick is the ticked lists it still
-// offers, in their order, with the names it gives them; when that pick differs
-// from the pick last written (a list dropped or renamed), it is written once as
-// an ordinary pick change, else nothing is written. The binding's
+// A new value from the host replaces a read made on Try again.
+//
+// ONE RECONCILIATION for every read the step draws, whether a new value from
+// the host or the result of Try again. A read that failed (or was rejected or
+// malformed) changes nothing about the pick: nothing is written, the ticks stay
+// for the next read that succeeds, and the step reports its value unsendable
+// while it shows the failed reading. After a read that succeeded, the pick is
+// the ticked lists it still offers, in their order, with the names it gives
+// them; when that pick differs from the pick last written (a list dropped or
+// renamed), it is written once as an ordinary pick change, else nothing is
+// written. A read-only or disabled step writes nothing. The binding's
 // `params.refreshValue` is not read here; it stays declared because the
 // recipient selection package declares the same binding with it, and the
 // application refuses two declarations of one binding that differ.
@@ -294,6 +298,11 @@ function loadingRows() {
   );
 }
 
+/** A read's identity for the reconciliation: its offered lists when it succeeded, else one key for every read that did not. */
+function readKey(value: unknown): string {
+  return readSucceeded(value) ? JSON.stringify(offeredLists(value)) : "not-read";
+}
+
 /** Whether the step writes and reports: `mode` absent or "edit", and `disabled` absent or false. */
 function isWritable(props: Pick<ListPickerProps, "mode" | "disabled">): boolean {
   return (props.mode === undefined || props.mode === "edit") && (props.disabled === undefined || props.disabled === false);
@@ -371,28 +380,47 @@ export default function ListPickerRenderer(props: ListPickerProps) {
       setReading(false);
       return;
     }
+    // The new read is drawn; the one reconciliation below takes it from there.
     setReread({ content: next });
     setReading(false);
-    // Only a read that succeeded says which lists exist. A failed, rejected or
-    // malformed read changes nothing about the pick: nothing is written and the
-    // ticked lists stay for the next read that succeeds. While it shows, the
-    // step offers no row and reports its value unsendable (design I.1: the
-    // Continue stays unavailable), so a pick the person cannot see is never sent.
-    if (!readSucceeded(next)) return;
-    // The pick as the new read names it: the ticked lists it still offers, in
-    // their order, with the names it gives them. A ticked list it no longer
-    // offers is dropped. When that pick differs in any way from the pick last
-    // written (a dropped list, a renamed one), it is written once, as an
-    // ordinary pick change, through the current `onChange`; otherwise nothing
-    // is written.
-    const nowOffered = offeredLists(next);
-    const nameOf = new Map(nowOffered.map((list) => [list.id, list.name]));
-    const kept = now.ticked.filter((id) => nameOf.has(id));
-    if (kept.length !== now.ticked.length) setTicked(kept);
+  };
+
+  // A new value from the host replaces a read made on Try again: the value is
+  // the newer word on the step's lists.
+  const valueKey = readKey(props.value);
+  const seenValueKey = useRef(valueKey);
+  useEffect(() => {
+    if (seenValueKey.current === valueKey) return;
+    seenValueKey.current = valueKey;
+    setReread(null);
+  }, [valueKey]);
+
+  // THE ONE RECONCILIATION. Whenever the read the step draws changes (a new
+  // value from the host, or the result of Try again), or the step becomes
+  // writable again, the pick is brought in line with that read, but only when
+  // the read succeeded: a failed, rejected or malformed read says nothing
+  // about which lists exist, so it changes nothing (the ticks stay for the
+  // next read that succeeds; while it shows, no row is drawn and Continue
+  // stays unavailable). After a read that succeeded, the pick is the ticked
+  // lists it still offers, in their order, with the names it gives them; when
+  // that pick differs in any way from the pick last written (a list dropped or
+  // renamed), it is written once through the current `onChange`, and
+  // otherwise nothing is written, so the host's re-render with the same value
+  // writes nothing again. A step that does not write (read-only or disabled)
+  // writes nothing here either.
+  const drawnKey = readKey(content);
+  useEffect(() => {
+    if (!writes || !readSucceeded(content)) return;
+    const nameOf = new Map(lists.map((list) => [list.id, list.name]));
+    const kept = ticked.filter((id) => nameOf.has(id));
+    if (kept.length !== ticked.length) setTicked(kept);
     const pick = { listIds: kept, listNames: kept.map((id) => nameOf.get(id) ?? "") };
     const last = lastWritten.current ?? { listIds: [], listNames: [] };
-    if (JSON.stringify(pick) !== JSON.stringify(last)) write(now.props.onChange, pick);
-  };
+    if (JSON.stringify(pick) !== JSON.stringify(last)) write(props.onChange, pick);
+    // The read (by its offered lists) and whether the step writes are what
+    // this follows; a new callback identity or object identity is no change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawnKey, writes]);
 
   const question = declaredWords(props.bindingParams, "question");
   const waiting = props.mode !== "view";
